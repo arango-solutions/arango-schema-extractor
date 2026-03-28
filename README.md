@@ -90,7 +90,7 @@ Run integration tests (opt-in):
 
 ```bash
 export RUN_INTEGRATION=1
-export ARANGO_URL=http://localhost:8529
+export ARANGO_URL=http://localhost:18529
 export ARANGO_DB=schema_analyzer_it
 export ARANGO_USER=root
 export ARANGO_PASS=openSesame

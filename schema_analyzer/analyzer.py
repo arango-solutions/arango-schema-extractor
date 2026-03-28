@@ -104,9 +104,10 @@ def _api_key_from_env(provider: str) -> str | None:
     p = (provider or "").lower()
     if p == "openai":
         return os.environ.get("OPENAI_API_KEY")
+    if p == "anthropic":
+        return os.environ.get("ANTHROPIC_API_KEY")
     if p == "openrouter":
         return os.environ.get("OPENROUTER_API_KEY")
-    # If you add Anthropic env var later, wire it here.
     return None
 
 

@@ -16,8 +16,31 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "required": ["entities", "relationships", "properties"],
             "properties": {
-                "entities": {"type": "array", "items": {"type": "object"}},
-                "relationships": {"type": "array", "items": {"type": "object"}},
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name"],
+                        "properties": {
+                            "name": {"type": "string", "minLength": 1},
+                            "labels": {"type": "array", "items": {"type": "string"}},
+                            "properties": {"type": "array", "items": {"type": "object"}},
+                        },
+                    },
+                },
+                "relationships": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["type", "fromEntity", "toEntity"],
+                        "properties": {
+                            "type": {"type": "string", "minLength": 1},
+                            "fromEntity": {"type": "string", "minLength": 1},
+                            "toEntity": {"type": "string", "minLength": 1},
+                            "properties": {"type": "array", "items": {"type": "object"}},
+                        },
+                    },
+                },
                 "properties": {"type": "array", "items": {"type": "object"}},
             },
         },
@@ -26,8 +49,26 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "required": ["entities", "relationships"],
             "properties": {
-                "entities": {"type": "object", "additionalProperties": {"type": "object"}},
-                "relationships": {"type": "object", "additionalProperties": {"type": "object"}},
+                "entities": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "required": ["style"],
+                        "properties": {
+                            "style": {"type": "string", "enum": ["COLLECTION", "LABEL"]},
+                        },
+                    },
+                },
+                "relationships": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "required": ["style"],
+                        "properties": {
+                            "style": {"type": "string", "enum": ["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]},
+                        },
+                    },
+                },
             },
         },
         "metadata": {

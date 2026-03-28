@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import version as pkg_version, PackageNotFoundError
 from typing import Any, Literal
 
 from arango import ArangoClient
@@ -15,6 +16,13 @@ from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_re
 
 
 Operation = Literal["analyze", "snapshot", "export", "docs", "owl"]
+
+
+def _library_version() -> str:
+    try:
+        return pkg_version("arangodb-schema-analyzer")
+    except PackageNotFoundError:
+        return "0.0.0-dev"
 
 
 def _env(name: str) -> str | None:
@@ -66,9 +74,30 @@ def _tooling_block(*, analysis: dict[str, Any] | None, snapshot: dict[str, Any] 
     if snapshot and isinstance(snapshot, dict):
         tooling["snapshotVersion"] = int(snapshot.get("version") or 0) if str(snapshot.get("version") or "").isdigit() else snapshot.get("version")
         tooling["snapshotFingerprint"] = fingerprint_physical_schema(snapshot, include_samples=False)
-    # Version comes from pyproject; keep in sync manually for now.
-    tooling["libraryVersion"] = "0.1.0"
+    tooling["libraryVersion"] = _library_version()
     return tooling
+
+
+def _build_response(
+    *,
+    op: str,
+    req_id: str | None,
+    result: dict[str, Any],
+    tooling: dict[str, Any],
+) -> dict[str, Any]:
+    resp: dict[str, Any] = {
+        "contractVersion": CONTRACT_VERSION,
+        "operation": op,
+        "ok": True,
+        "tooling": tooling,
+        "result": result,
+    }
+    if req_id:
+        resp["requestId"] = req_id
+    errors = validate_response_v1(resp)
+    if errors:
+        raise SchemaAnalyzerError(f"Internal response validation failed: {errors}", code="INTERNAL_ERROR")
+    return resp
 
 
 def run_tool(request: dict[str, Any]) -> dict[str, Any]:
@@ -103,19 +132,12 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 sample_limit_per_collection=int(analysis_options.get("sampleLimitPerCollection") or 0),
                 include_samples_in_snapshot=bool(analysis_options.get("includeSamplesInSnapshot") or False),
             )
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=None, snapshot=snapshot),
-                "result": {"snapshot": snapshot},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"snapshot": snapshot},
+                tooling=_tooling_block(analysis=None, snapshot=snapshot),
+            )
 
         if op == "analyze":
             llm = request.get("llm") if isinstance(request.get("llm"), dict) else None
@@ -155,19 +177,12 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             if bool(output_options.get("includeSnapshot") or False):
                 result["snapshot"] = snapshot
 
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_dict, snapshot=snapshot),
-                "result": result,
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result=result,
+                tooling=_tooling_block(analysis=analysis_dict, snapshot=snapshot),
+            )
 
         # Transform operations
         input_obj = request.get("input") if isinstance(request.get("input"), dict) else {}
@@ -177,57 +192,36 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
 
         if op == "export":
             target = (output_options.get("exportTarget") if isinstance(output_options.get("exportTarget"), str) else "cypher")
-            out = export_mapping(analysis_in, target=target)  # returns conceptualSchema/physicalMapping/metadata
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_in, snapshot=None),
-                "result": {"export": out},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            out = export_mapping(analysis_in, target=target)
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"export": out},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         if op == "docs":
             md = generate_schema_docs(analysis_in)
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_in, snapshot=None),
-                "result": {"markdown": md},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"markdown": md},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         if op == "owl":
             ttl = export_conceptual_model_as_owl_turtle(analysis_in)
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_in, snapshot=None),
-                "result": {"turtle": ttl},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"turtle": ttl},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         raise SchemaAnalyzerError(f"Unsupported operation: {op}", code="INVALID_ARGUMENT")
 
     except SchemaAnalyzerError as e:
-        resp = {
+        resp: dict[str, Any] = {
             "contractVersion": CONTRACT_VERSION,
             "operation": op,
             "ok": False,
@@ -235,6 +229,5 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
         }
         if req_id:
             resp["requestId"] = req_id
-        # best-effort: validate, but don't override the original error
         return resp
 
