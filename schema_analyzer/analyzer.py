@@ -11,12 +11,13 @@ from .conceptual import ConceptualSchema
 from .baseline import infer_baseline_from_snapshot
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
+from .providers import create_provider, get_default_model, get_provider_env_var
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .types import AnalysisMetadata, AnalysisResult, now_iso
 from .utils import extract_first_json_object
 from .utils import stable_dumps
 from .validation import validate_analysis_output
-from .workflow import run_generate_validate_repair
+from .workflow import async_generate_validate_repair, run_generate_validate_repair
 
 logger = logging.getLogger(__name__)
 
@@ -85,32 +86,9 @@ def _compute_confidence(errors: list[str], warnings: list[str]) -> float:
     return max(0.1, base - penalty)
 
 
-def _provider_from_name(name: str, api_key: str):
-    name = (name or "").lower()
-    if name == "openai":
-        from .providers.openai_provider import OpenAIProvider
-
-        return OpenAIProvider(api_key=api_key)
-    if name == "anthropic":
-        from .providers.anthropic_provider import AnthropicProvider
-
-        return AnthropicProvider(api_key=api_key)
-    if name == "openrouter":
-        from .providers.openrouter_provider import OpenRouterProvider
-
-        return OpenRouterProvider(api_key=api_key)
-    raise SchemaAnalyzerError(f"Unknown llm_provider: {name}", code="INVALID_ARGUMENT")
-
-
 def _api_key_from_env(provider: str) -> str | None:
-    p = (provider or "").lower()
-    if p == "openai":
-        return os.environ.get("OPENAI_API_KEY")
-    if p == "anthropic":
-        return os.environ.get("ANTHROPIC_API_KEY")
-    if p == "openrouter":
-        return os.environ.get("OPENROUTER_API_KEY")
-    return None
+    env_var = get_provider_env_var(provider)
+    return os.environ.get(env_var) if env_var else None
 
 
 @dataclass
@@ -180,16 +158,8 @@ class AgenticSchemaAnalyzer:
             return result
 
         logger.info("Using LLM provider=%s", self.llm_provider)
-        provider = _provider_from_name(self.llm_provider, api_key)
-        prov = str(self.llm_provider).lower()
-        if self.model:
-            model = self.model
-        elif prov == "openai":
-            model = "gpt-4o-mini"
-        elif prov == "openrouter":
-            model = "openai/gpt-4o-mini"
-        else:
-            model = "claude-3-5-sonnet-latest"
+        provider = create_provider(self.llm_provider, api_key=api_key)
+        model = self.model or get_default_model(self.llm_provider)
 
         elapsed_ms = int((time.time() - started) * 1000)
         remaining = max(1_000, timeout_ms - elapsed_ms)
@@ -210,7 +180,7 @@ class AgenticSchemaAnalyzer:
             data = wf.data
             repair_attempts = wf.repair_attempts
         except SchemaAnalyzerError as e:
-            # Hard failure: fall back to baseline inference but preserve diagnostics in warnings.
+            logger.warning("LLM workflow failed, falling back to baseline: %s", e)
             baseline = infer_baseline_from_snapshot(snapshot)
             data = {
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
@@ -221,6 +191,100 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        return self._build_result(
+            snapshot=snapshot, data=data, model=model,
+            errors=errors, warnings=warnings, repair_attempts=repair_attempts,
+            fingerprint=fingerprint, use_cache=use_cache,
+        )
+
+    async def analyze_physical_schema_async(
+        self,
+        db: StandardDatabase,
+        *,
+        timeout_ms: int = 60_000,
+        sample_limit_per_collection: int = 0,
+        include_samples_in_snapshot: bool = False,
+        use_cache: bool = True,
+    ) -> AnalysisResult:
+        """Async version of analyze_physical_schema. Requires provider with agenerate()."""
+        started = time.time()
+
+        snapshot = snapshot_physical_schema(
+            db,
+            sample_limit_per_collection=sample_limit_per_collection,
+            include_samples_in_snapshot=include_samples_in_snapshot,
+        )
+        snapshot["generated_at"] = now_iso()
+        fingerprint = fingerprint_physical_schema(snapshot, include_samples=False)
+
+        if use_cache and self.cache is not None:
+            cached = self.cache.get(fingerprint)
+            if cached:
+                logger.info("Cache hit for fingerprint %s", fingerprint[:16])
+                return AnalysisResult.model_validate(cached)
+
+        api_key = self.api_key or (_api_key_from_env(self.llm_provider) if self.llm_provider else None)
+        if not self.llm_provider or not api_key:
+            return self.analyze_physical_schema(
+                db,
+                timeout_ms=timeout_ms,
+                sample_limit_per_collection=sample_limit_per_collection,
+                include_samples_in_snapshot=include_samples_in_snapshot,
+                use_cache=use_cache,
+            )
+
+        logger.info("Using async LLM provider=%s", self.llm_provider)
+        provider = create_provider(self.llm_provider, api_key=api_key)
+        model = self.model or get_default_model(self.llm_provider)
+
+        elapsed_ms = int((time.time() - started) * 1000)
+        remaining = max(1_000, timeout_ms - elapsed_ms)
+
+        system = _default_system_prompt()
+        prompt = _build_prompt(snapshot)
+        errors: list[str] = []
+        warnings: list[str] = []
+        try:
+            wf = await async_generate_validate_repair(
+                provider=provider,
+                model=model,
+                system=system,
+                prompt=prompt,
+                timeout_ms=remaining,
+                max_repair_attempts=2,
+            )
+            data = wf.data
+            repair_attempts = wf.repair_attempts
+        except SchemaAnalyzerError as e:
+            logger.warning("Async LLM workflow failed, falling back to baseline: %s", e)
+            baseline = infer_baseline_from_snapshot(snapshot)
+            data = {
+                "conceptualSchema": baseline.get("conceptualSchema", {}),
+                "physicalMapping": baseline.get("physicalMapping", {}),
+                "metadata": {"warnings": [str(e)]},
+            }
+            warnings.append("LLM workflow failed; returning deterministic baseline inference")
+            errors.append(str(e))
+            repair_attempts = 0
+
+        return self._build_result(
+            snapshot=snapshot, data=data, model=model,
+            errors=errors, warnings=warnings, repair_attempts=repair_attempts,
+            fingerprint=fingerprint, use_cache=use_cache,
+        )
+
+    def _build_result(
+        self,
+        *,
+        snapshot: dict[str, Any],
+        data: dict[str, Any],
+        model: str,
+        errors: list[str],
+        warnings: list[str],
+        repair_attempts: int,
+        fingerprint: str,
+        use_cache: bool,
+    ) -> AnalysisResult:
         doc_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "document")
         edge_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "edge")
 
@@ -250,8 +314,12 @@ class AgenticSchemaAnalyzer:
             used_baseline=bool(errors),
         )
 
-        conceptual_schema = ConceptualSchema.from_json(data.get("conceptualSchema", {}) if isinstance(data.get("conceptualSchema"), dict) else {}).to_json()
-        physical_mapping = PhysicalMapping.from_json(data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}).to_json()
+        conceptual_schema = ConceptualSchema.from_json(
+            data.get("conceptualSchema", {}) if isinstance(data.get("conceptualSchema"), dict) else {}
+        ).to_json()
+        physical_mapping = PhysicalMapping.from_json(
+            data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}
+        ).to_json()
 
         result = AnalysisResult(
             conceptual_schema=conceptual_schema,

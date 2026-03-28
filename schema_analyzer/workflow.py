@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,11 +12,45 @@ from .validation import validate_analysis_output
 
 logger = logging.getLogger(__name__)
 
+_TRANSIENT_CODES = frozenset({"PROVIDER_ERROR"})
+
 
 @dataclass(frozen=True)
 class WorkflowResult:
     data: dict[str, Any]
     repair_attempts: int
+
+
+def _is_transient(exc: SchemaAnalyzerError) -> bool:
+    return exc.code in _TRANSIENT_CODES
+
+
+def _call_with_retry(
+    provider,
+    *,
+    model: str,
+    system: str,
+    prompt: str,
+    timeout_ms: int,
+    max_retries: int = 2,
+    base_delay: float = 1.0,
+):
+    """Call provider.generate with exponential backoff on transient failures."""
+    last_exc: SchemaAnalyzerError | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return provider.generate(model=model, system=system, prompt=prompt, timeout_ms=timeout_ms)
+        except SchemaAnalyzerError as e:
+            if not _is_transient(e) or attempt >= max_retries:
+                raise
+            last_exc = e
+            delay = base_delay * (2 ** attempt)
+            logger.warning(
+                "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1, max_retries + 1, delay, e,
+            )
+            time.sleep(delay)
+    raise last_exc  # pragma: no cover
 
 
 def _repair_prompt(*, validation_errors: list[str], previous_json: str) -> str:
@@ -39,9 +74,11 @@ def run_generate_validate_repair(
     prompt: str,
     timeout_ms: int,
     max_repair_attempts: int = 2,
+    max_retries: int = 2,
 ) -> WorkflowResult:
     """
     Agentic loop: generate -> parse -> validate -> repair (if needed) -> finalize.
+    Each LLM call is wrapped with retry/backoff for transient provider errors.
     Returns validated JSON (or raises on repeated failure).
     """
     repair_attempts = 0
@@ -49,7 +86,98 @@ def run_generate_validate_repair(
 
     while True:
         logger.info("LLM generate call: model=%s, timeout_ms=%d, attempt=%d", model, timeout_ms, repair_attempts + 1)
-        resp = provider.generate(model=model, system=system, prompt=current_prompt, timeout_ms=timeout_ms)
+        resp = _call_with_retry(
+            provider,
+            model=model,
+            system=system,
+            prompt=current_prompt,
+            timeout_ms=timeout_ms,
+            max_retries=max_retries,
+        )
+        logger.debug("LLM response received: %d chars", len(resp.text or ""))
+
+        try:
+            json_str = extract_first_json_object(resp.text)
+        except Exception as e:
+            raise SchemaAnalyzerError("Failed to extract JSON from LLM output", code="PARSE_ERROR", cause=e)
+
+        try:
+            data = json.loads(json_str)
+        except Exception as e:
+            raise SchemaAnalyzerError("LLM output was not valid JSON", code="PARSE_ERROR", cause=e)
+
+        errors = validate_analysis_output(data if isinstance(data, dict) else {})
+        if not errors:
+            logger.info("LLM output validated successfully after %d repair attempt(s)", repair_attempts)
+            return WorkflowResult(data=data, repair_attempts=repair_attempts)
+
+        if repair_attempts >= max_repair_attempts:
+            logger.warning("Validation failed after %d repair attempts: %s", repair_attempts, errors)
+            raise SchemaAnalyzerError(
+                "LLM output failed schema validation after repair attempts",
+                code="VALIDATION_ERROR",
+                cause=None,
+            )
+
+        repair_attempts += 1
+        logger.info("Validation failed, initiating repair attempt %d: %s", repair_attempts, errors)
+        current_prompt = _repair_prompt(validation_errors=errors, previous_json=json_str)
+
+
+async def _async_call_with_retry(
+    provider,
+    *,
+    model: str,
+    system: str,
+    prompt: str,
+    timeout_ms: int,
+    max_retries: int = 2,
+    base_delay: float = 1.0,
+):
+    """Async version of _call_with_retry."""
+    import asyncio
+
+    last_exc: SchemaAnalyzerError | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await provider.agenerate(model=model, system=system, prompt=prompt, timeout_ms=timeout_ms)
+        except SchemaAnalyzerError as e:
+            if not _is_transient(e) or attempt >= max_retries:
+                raise
+            last_exc = e
+            delay = base_delay * (2 ** attempt)
+            logger.warning(
+                "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1, max_retries + 1, delay, e,
+            )
+            await asyncio.sleep(delay)
+    raise last_exc  # pragma: no cover
+
+
+async def async_generate_validate_repair(
+    *,
+    provider,
+    model: str,
+    system: str,
+    prompt: str,
+    timeout_ms: int,
+    max_repair_attempts: int = 2,
+    max_retries: int = 2,
+) -> WorkflowResult:
+    """Async version of run_generate_validate_repair."""
+    repair_attempts = 0
+    current_prompt = prompt
+
+    while True:
+        logger.info("Async LLM generate: model=%s, timeout_ms=%d, attempt=%d", model, timeout_ms, repair_attempts + 1)
+        resp = await _async_call_with_retry(
+            provider,
+            model=model,
+            system=system,
+            prompt=current_prompt,
+            timeout_ms=timeout_ms,
+            max_retries=max_retries,
+        )
         logger.debug("LLM response received: %d chars", len(resp.text or ""))
 
         try:
