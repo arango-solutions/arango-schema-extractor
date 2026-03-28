@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from arango.database import StandardDatabase
 
 from .utils import sha256_hex, stable_dumps
 
@@ -132,7 +135,7 @@ def _summarize_graph_props(props: Any) -> dict[str, Any]:
 
 
 def snapshot_physical_schema(
-    db,
+    db: StandardDatabase,
     *,
     sample_limit_per_collection: int = 0,
     include_samples_in_snapshot: bool = False,

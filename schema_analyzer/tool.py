@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 from importlib.metadata import version as pkg_version, PackageNotFoundError
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from arango import ArangoClient
+
+if TYPE_CHECKING:
+    from arango.database import StandardDatabase
 
 from .analyzer import AgenticSchemaAnalyzer
 from .docs import generate_schema_docs
@@ -49,7 +52,7 @@ def _get_api_key(llm: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _connect_db(conn: dict[str, Any]):
+def _connect_db(conn: dict[str, Any]) -> StandardDatabase:
     url = conn.get("url")
     db_name = conn.get("database")
     username = conn.get("username") or "root"

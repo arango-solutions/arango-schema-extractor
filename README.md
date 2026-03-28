@@ -1,6 +1,6 @@
 # arangodb-schema-analyzer (v0.1)
 
-Standalone Python library that analyzes an ArangoDB database’s physical schema and produces:
+Standalone Python library that analyzes an ArangoDB database's physical schema and produces:
 
 - a **conceptual schema** (entities, relationships, properties)
 - a **conceptual→physical mapping** suitable for transpilers (Cypher, SPARQL, future)
@@ -21,7 +21,9 @@ python -m pip install -e ".[openai]"
 python -m pip install -e ".[anthropic]"
 ```
 
-If you don’t install a provider SDK (or you don’t provide an API key), analysis degrades gracefully.
+OpenRouter is also supported and requires no extra SDK (uses stdlib `urllib`).
+
+If you don't install a provider SDK (or you don't provide an API key), analysis degrades gracefully.
 
 ## Usage
 
@@ -34,7 +36,7 @@ client = ArangoClient(hosts="http://localhost:8529")
 db = client.db("mydb", username="root", password="openSesame")
 
 analyzer = AgenticSchemaAnalyzer(
-    llm_provider="openai",  # or "anthropic"
+    llm_provider="openai",  # or "anthropic" or "openrouter"
     api_key=None,           # e.g. os.environ["OPENAI_API_KEY"]
     model="gpt-4o-mini",
     cache={"type": "filesystem", "directory": ".schema-analyzer-cache"},
@@ -96,5 +98,3 @@ export ARANGO_USER=root
 export ARANGO_PASS=openSesame
 pytest -q -m integration
 ```
-
-

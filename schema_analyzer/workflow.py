@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from .errors import SchemaAnalyzerError
 from .utils import extract_first_json_object
 from .validation import validate_analysis_output
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,9 @@ def run_generate_validate_repair(
     current_prompt = prompt
 
     while True:
+        logger.info("LLM generate call: model=%s, timeout_ms=%d, attempt=%d", model, timeout_ms, repair_attempts + 1)
         resp = provider.generate(model=model, system=system, prompt=current_prompt, timeout_ms=timeout_ms)
+        logger.debug("LLM response received: %d chars", len(resp.text or ""))
 
         try:
             json_str = extract_first_json_object(resp.text)
@@ -59,9 +64,11 @@ def run_generate_validate_repair(
 
         errors = validate_analysis_output(data if isinstance(data, dict) else {})
         if not errors:
+            logger.info("LLM output validated successfully after %d repair attempt(s)", repair_attempts)
             return WorkflowResult(data=data, repair_attempts=repair_attempts)
 
         if repair_attempts >= max_repair_attempts:
+            logger.warning("Validation failed after %d repair attempts: %s", repair_attempts, errors)
             raise SchemaAnalyzerError(
                 "LLM output failed schema validation after repair attempts",
                 code="VALIDATION_ERROR",
@@ -69,5 +76,6 @@ def run_generate_validate_repair(
             )
 
         repair_attempts += 1
+        logger.info("Validation failed, initiating repair attempt %d: %s", repair_attempts, errors)
         current_prompt = _repair_prompt(validation_errors=errors, previous_json=json_str)
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
-
-import os
 
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
@@ -17,6 +17,8 @@ from .utils import extract_first_json_object
 from .utils import stable_dumps
 from .validation import validate_analysis_output
 from .workflow import run_generate_validate_repair
+
+logger = logging.getLogger(__name__)
 
 
 def _default_system_prompt() -> str:
@@ -126,7 +128,7 @@ class AgenticSchemaAnalyzer:
 
     def analyze_physical_schema(
         self,
-        db,
+        db: StandardDatabase,
         *,
         timeout_ms: int = 60_000,
         sample_limit_per_collection: int = 0,
@@ -146,13 +148,12 @@ class AgenticSchemaAnalyzer:
         if use_cache and self.cache is not None:
             cached = self.cache.get(fingerprint)
             if cached:
-                # best-effort TTL enforcement: if cached payload has timestamp + ttl marker, respect it
-                # otherwise assume valid.
+                logger.info("Cache hit for fingerprint %s", fingerprint[:16])
                 return AnalysisResult.model_validate(cached)
 
-        # If no provider or no key, degrade gracefully with a deterministic minimal output.
         api_key = self.api_key or (_api_key_from_env(self.llm_provider) if self.llm_provider else None)
         if not self.llm_provider or not api_key:
+            logger.info("No LLM provider configured; falling back to baseline inference")
             doc_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "document")
             edge_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "edge")
             baseline = infer_baseline_from_snapshot(snapshot)
@@ -178,6 +179,7 @@ class AgenticSchemaAnalyzer:
                 self.cache.set(fingerprint, result.model_dump(), ttl_seconds=self.cache_ttl_seconds)
             return result
 
+        logger.info("Using LLM provider=%s", self.llm_provider)
         provider = _provider_from_name(self.llm_provider, api_key)
         prov = str(self.llm_provider).lower()
         if self.model:
@@ -258,7 +260,12 @@ class AgenticSchemaAnalyzer:
         )
 
         if use_cache and self.cache is not None:
+            logger.debug("Caching result for fingerprint %s", fingerprint[:16])
             self.cache.set(fingerprint, result.model_dump(), ttl_seconds=self.cache_ttl_seconds)
 
+        logger.info(
+            "Analysis complete: confidence=%.2f, review_required=%s, repair_attempts=%d",
+            confidence, review_required, repair_attempts,
+        )
         return result
 
