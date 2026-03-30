@@ -1,4 +1,3 @@
-import os
 
 
 def test_run_tool_rejects_invalid_request():

@@ -4,19 +4,31 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
+if TYPE_CHECKING:
+    from arango.database import StandardDatabase
+
+from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
-from .baseline import infer_baseline_from_snapshot
+from .defaults import (
+    CONFIDENCE_BASE,
+    CONFIDENCE_FLOOR,
+    CONFIDENCE_MAX_PENALTY,
+    CONFIDENCE_WARNING_PENALTY,
+    DEFAULT_CACHE_TTL_SECONDS,
+    DEFAULT_REVIEW_THRESHOLD,
+    DEFAULT_TIMEOUT_MS,
+    MAX_REPAIR_ATTEMPTS,
+    MIN_LLM_BUDGET_MS,
+)
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .providers import create_provider, get_default_model, get_provider_env_var
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .types import AnalysisMetadata, AnalysisResult, now_iso
-from .utils import extract_first_json_object
 from .utils import stable_dumps
-from .validation import validate_analysis_output
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
 
 logger = logging.getLogger(__name__)
@@ -80,10 +92,8 @@ def _build_prompt(snapshot: dict[str, Any]) -> str:
 def _compute_confidence(errors: list[str], warnings: list[str]) -> float:
     if errors:
         return 0.0
-    # Simple v0.1 heuristic: start high and subtract for warnings.
-    base = 0.9
-    penalty = min(0.6, 0.05 * len(warnings))
-    return max(0.1, base - penalty)
+    penalty = min(CONFIDENCE_MAX_PENALTY, CONFIDENCE_WARNING_PENALTY * len(warnings))
+    return max(CONFIDENCE_FLOOR, CONFIDENCE_BASE - penalty)
 
 
 def _api_key_from_env(provider: str) -> str | None:
@@ -97,8 +107,8 @@ class AgenticSchemaAnalyzer:
     api_key: str | None = None
     model: str | None = None
     cache: AnalysisCache | dict[str, Any] | None = None
-    cache_ttl_seconds: int = 24 * 60 * 60
-    review_threshold: float = 0.6
+    cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS
+    review_threshold: float = DEFAULT_REVIEW_THRESHOLD
 
     def __post_init__(self) -> None:
         if isinstance(self.cache, dict) or self.cache is None:
@@ -108,14 +118,15 @@ class AgenticSchemaAnalyzer:
         self,
         db: StandardDatabase,
         *,
-        timeout_ms: int = 60_000,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
         sample_limit_per_collection: int = 0,
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
+        _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         started = time.time()
 
-        snapshot = snapshot_physical_schema(
+        snapshot = _snapshot or snapshot_physical_schema(
             db,
             sample_limit_per_collection=sample_limit_per_collection,
             include_samples_in_snapshot=include_samples_in_snapshot,
@@ -162,7 +173,7 @@ class AgenticSchemaAnalyzer:
         model = self.model or get_default_model(self.llm_provider)
 
         elapsed_ms = int((time.time() - started) * 1000)
-        remaining = max(1_000, timeout_ms - elapsed_ms)
+        remaining = max(MIN_LLM_BUDGET_MS, timeout_ms - elapsed_ms)
 
         system = _default_system_prompt()
         prompt = _build_prompt(snapshot)
@@ -175,7 +186,7 @@ class AgenticSchemaAnalyzer:
                 system=system,
                 prompt=prompt,
                 timeout_ms=remaining,
-                max_repair_attempts=2,
+                max_repair_attempts=MAX_REPAIR_ATTEMPTS,
             )
             data = wf.data
             repair_attempts = wf.repair_attempts
@@ -201,15 +212,16 @@ class AgenticSchemaAnalyzer:
         self,
         db: StandardDatabase,
         *,
-        timeout_ms: int = 60_000,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
         sample_limit_per_collection: int = 0,
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
+        _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         """Async version of analyze_physical_schema. Requires provider with agenerate()."""
         started = time.time()
 
-        snapshot = snapshot_physical_schema(
+        snapshot = _snapshot or snapshot_physical_schema(
             db,
             sample_limit_per_collection=sample_limit_per_collection,
             include_samples_in_snapshot=include_samples_in_snapshot,
@@ -238,7 +250,7 @@ class AgenticSchemaAnalyzer:
         model = self.model or get_default_model(self.llm_provider)
 
         elapsed_ms = int((time.time() - started) * 1000)
-        remaining = max(1_000, timeout_ms - elapsed_ms)
+        remaining = max(MIN_LLM_BUDGET_MS, timeout_ms - elapsed_ms)
 
         system = _default_system_prompt()
         prompt = _build_prompt(snapshot)
@@ -251,7 +263,7 @@ class AgenticSchemaAnalyzer:
                 system=system,
                 prompt=prompt,
                 timeout_ms=remaining,
-                max_repair_attempts=2,
+                max_repair_attempts=MAX_REPAIR_ATTEMPTS,
             )
             data = wf.data
             repair_attempts = wf.repair_attempts

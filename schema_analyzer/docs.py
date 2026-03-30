@@ -54,8 +54,8 @@ def generate_schema_docs(analysis: Any) -> str:
     lines.append("")
     lines.append("### Physical mapping (summary)")
     lines.append("")
-    lines.append(f"- **Entity mappings**: {len((pm.get('entities') or {}))}")
-    lines.append(f"- **Relationship mappings**: {len((pm.get('relationships') or {}))}")
+    lines.append(f"- **Entity mappings**: {len(pm.get('entities') or {})}")
+    lines.append(f"- **Relationship mappings**: {len(pm.get('relationships') or {})}")
 
     return "\n".join(lines) + "\n"
 

@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 from .conceptual import ConceptualSchema
 from .mapping import PhysicalMapping
-
-
-def _pascal_case(name: str) -> str:
-    parts = [p for p in str(name).replace("-", "_").replace(" ", "_").split("_") if p]
-    return "".join(p[:1].upper() + p[1:] for p in parts) or "Unknown"
+from .utils import pascal_case
 
 
 def _choose_type_field(col: dict[str, Any], *, is_edge: bool) -> str | None:
@@ -94,7 +89,7 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         type_field = _choose_type_field(col, is_edge=False)
         if type_field:
             for raw in _iter_type_values(col, type_field):
-                ent_name = _pascal_case(raw)
+                ent_name = pascal_case(raw)
                 cs.entities.append({"name": ent_name, "labels": [ent_name], "properties": []})
                 pm.entities[ent_name] = {
                     "style": "LABEL",
@@ -103,7 +98,7 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
                     "typeValue": raw,
                 }
         else:
-            ent_name = col.get("inferred_entity_type") or _pascal_case(collection_name)
+            ent_name = col.get("inferred_entity_type") or pascal_case(collection_name)
             cs.entities.append({"name": ent_name, "labels": [ent_name], "properties": []})
             pm.entities[ent_name] = {"style": "COLLECTION", "collectionName": collection_name}
 

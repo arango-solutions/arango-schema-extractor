@@ -5,7 +5,6 @@ import json
 import re
 from typing import Any
 
-
 _AQL_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -20,6 +19,12 @@ def stable_dumps(obj: Any) -> str:
 
 def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def pascal_case(name: str) -> str:
+    """Convert snake_case, kebab-case, or space-separated name to PascalCase."""
+    parts = [p for p in str(name).replace("-", "_").replace(" ", "_").split("_") if p]
+    return "".join(p[:1].upper() + p[1:] for p in parts) or "Unknown"
 
 
 def extract_first_json_object(text: str) -> str:

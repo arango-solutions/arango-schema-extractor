@@ -37,7 +37,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     from arango import ArangoClient
 
     from .analyzer import AgenticSchemaAnalyzer
-    from .eval import run_eval, format_eval_table, save_eval_report, compare_reports, list_domains
+    from .eval import compare_reports, format_eval_table, run_eval, save_eval_report
 
     url = args.url or os.environ.get("ARANGO_URL", os.environ.get("ARANGO_HOST", "http://localhost:8529"))
     user = args.user or os.environ.get("ARANGO_USER", "root")

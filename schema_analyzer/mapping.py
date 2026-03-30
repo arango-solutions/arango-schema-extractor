@@ -6,7 +6,6 @@ from typing import Any, Literal
 from .errors import SchemaAnalyzerError
 from .utils import assert_aql_identifier
 
-
 EntityMappingStyle = Literal["COLLECTION", "LABEL"]
 RelationshipMappingStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
 
@@ -17,11 +16,11 @@ class PhysicalMapping:
     relationships: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
-    def empty(cls) -> "PhysicalMapping":
+    def empty(cls) -> PhysicalMapping:
         return cls()
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "PhysicalMapping":
+    def from_json(cls, data: dict[str, Any]) -> PhysicalMapping:
         ent = data.get("entities", {})
         rel = data.get("relationships", {})
         return cls(

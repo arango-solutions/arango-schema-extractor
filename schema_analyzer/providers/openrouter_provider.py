@@ -5,6 +5,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from ..defaults import ANTHROPIC_MAX_TOKENS, LLM_TEMPERATURE
 from ..errors import SchemaAnalyzerError
 from .base import LLMResponse
 
@@ -34,8 +35,8 @@ class OpenRouterProvider:
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0,
-            "max_tokens": 4096,
+            "temperature": LLM_TEMPERATURE,
+            "max_tokens": ANTHROPIC_MAX_TOKENS,
         }).encode("utf-8")
 
     def generate(self, *, model: str, system: str, prompt: str, timeout_ms: int) -> LLMResponse:
@@ -56,15 +57,15 @@ class OpenRouterProvider:
                 f"OpenRouter request failed (HTTP {e.code})",
                 code="PROVIDER_ERROR",
                 cause=SchemaAnalyzerError(body[:2000] if body else str(e)),
-            )
+            ) from e
         except Exception as e:  # pragma: no cover
-            raise SchemaAnalyzerError("OpenRouter request failed", code="PROVIDER_ERROR", cause=e)
+            raise SchemaAnalyzerError("OpenRouter request failed", code="PROVIDER_ERROR", cause=e) from e
 
         try:
             data = json.loads(raw)
             text = data["choices"][0]["message"]["content"] or ""
         except Exception as e:  # pragma: no cover
-            raise SchemaAnalyzerError("OpenRouter response parse failed", code="PROVIDER_ERROR", cause=e)
+            raise SchemaAnalyzerError("OpenRouter response parse failed", code="PROVIDER_ERROR", cause=e) from e
 
         return LLMResponse(text=text, raw=data)
 

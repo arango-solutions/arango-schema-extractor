@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .defaults import DEFAULT_CACHE_DIR
 from .utils import stable_dumps
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisCache:
@@ -34,24 +37,26 @@ class FilesystemCache(AnalysisCache):
         try:
             data = json.loads(p.read_text("utf-8"))
         except Exception:
+            logger.warning("Corrupt or unreadable cache entry at %s, treating as miss", p)
             return None
 
-        # TTL is enforced by caller via stored metadata; keep cache dumb + stable.
         return data
 
     def set(self, fingerprint: str, value: dict[str, Any], *, ttl_seconds: int) -> None:
-        # Store ttl_seconds for observability; enforcement is handled by analyzer.
         p = self._path(fingerprint)
         payload = dict(value)
         payload["_cache"] = {"ttl_seconds": int(ttl_seconds)}
-        p.write_text(stable_dumps(payload), "utf-8")
+        try:
+            p.write_text(stable_dumps(payload), "utf-8")
+        except Exception:
+            logger.warning("Failed to write cache entry at %s", p, exc_info=True)
 
 
 def cache_from_config(cfg: dict[str, Any] | None) -> AnalysisCache | None:
     if not cfg:
         return None
     if cfg.get("type") == "filesystem":
-        directory = cfg.get("directory") or ".schema-analyzer-cache"
+        directory = cfg.get("directory") or DEFAULT_CACHE_DIR
         return FilesystemCache(Path(directory))
     return None
 

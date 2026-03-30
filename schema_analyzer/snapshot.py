@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
-from .utils import sha256_hex, stable_dumps
+from .defaults import SAMPLE_VALUE_TOP_K
+from .utils import pascal_case, sha256_hex, stable_dumps
+
 
 def _singularize(name: str) -> str:
     n = name.strip()
@@ -18,13 +20,8 @@ def _singularize(name: str) -> str:
     return n
 
 
-def _pascal_case(name: str) -> str:
-    parts = [p for p in name.replace("-", "_").split("_") if p]
-    return "".join(p[:1].upper() + p[1:] for p in parts)
-
-
 def infer_entity_type_from_collection_name(collection_name: str) -> str:
-    return _pascal_case(_singularize(collection_name))
+    return pascal_case(_singularize(collection_name))
 
 
 def infer_relationship_type_from_collection_name(collection_name: str) -> str:
@@ -237,7 +234,7 @@ def snapshot_physical_schema(
 
                 # Summarize observed values for candidate type fields.
                 # Include even when samples are omitted, so the analyzer can infer types.
-                top_k = 20
+                top_k = SAMPLE_VALUE_TOP_K
                 field_value_counts = {}
                 for f in entry["candidate_type_fields"]:
                     counts = value_stats.get(f, {})

@@ -6,7 +6,9 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from .defaults import MAX_REPAIR_ATTEMPTS, MAX_RETRIES, RETRY_BASE_DELAY
 from .errors import SchemaAnalyzerError
+from .providers.base import LLMProvider, LLMResponse
 from .utils import extract_first_json_object
 from .validation import validate_analysis_output
 
@@ -25,16 +27,63 @@ def _is_transient(exc: SchemaAnalyzerError) -> bool:
     return exc.code in _TRANSIENT_CODES
 
 
+def _repair_prompt(*, validation_errors: list[str], previous_json: str) -> str:
+    errs = "\n".join(f"- {e}" for e in validation_errors) if validation_errors else "- (unknown)"
+    return (
+        "Your previous output did not match the required JSON schema.\n"
+        "Fix the JSON so it validates.\n\n"
+        "Validation errors:\n"
+        f"{errs}\n\n"
+        "Previous JSON output:\n"
+        f"{previous_json}\n\n"
+        "Return ONLY the corrected JSON object. No markdown, no extra text."
+    )
+
+
+def _parse_and_validate(resp: LLMResponse, repair_attempts: int, max_repair_attempts: int) -> WorkflowResult | str:
+    """
+    Parse and validate an LLM response.
+
+    Returns a WorkflowResult on success, or the next prompt string if repair is needed.
+    Raises SchemaAnalyzerError on fatal parse/validation failures.
+    """
+    try:
+        json_str = extract_first_json_object(resp.text)
+    except Exception as e:
+        raise SchemaAnalyzerError("Failed to extract JSON from LLM output", code="PARSE_ERROR", cause=e) from e
+
+    try:
+        data = json.loads(json_str)
+    except Exception as e:
+        raise SchemaAnalyzerError("LLM output was not valid JSON", code="PARSE_ERROR", cause=e) from e
+
+    errors = validate_analysis_output(data if isinstance(data, dict) else {})
+    if not errors:
+        logger.info("LLM output validated successfully after %d repair attempt(s)", repair_attempts)
+        return WorkflowResult(data=data, repair_attempts=repair_attempts)
+
+    if repair_attempts >= max_repair_attempts:
+        logger.warning("Validation failed after %d repair attempts: %s", repair_attempts, errors)
+        raise SchemaAnalyzerError(
+            "LLM output failed schema validation after repair attempts",
+            code="VALIDATION_ERROR",
+            cause=None,
+        )
+
+    logger.info("Validation failed, initiating repair attempt %d: %s", repair_attempts + 1, errors)
+    return _repair_prompt(validation_errors=errors, previous_json=json_str)
+
+
 def _call_with_retry(
-    provider,
+    provider: LLMProvider,
     *,
     model: str,
     system: str,
     prompt: str,
     timeout_ms: int,
-    max_retries: int = 2,
-    base_delay: float = 1.0,
-):
+    max_retries: int = MAX_RETRIES,
+    base_delay: float = RETRY_BASE_DELAY,
+) -> LLMResponse:
     """Call provider.generate with exponential backoff on transient failures."""
     last_exc: SchemaAnalyzerError | None = None
     for attempt in range(max_retries + 1):
@@ -53,28 +102,15 @@ def _call_with_retry(
     raise last_exc  # pragma: no cover
 
 
-def _repair_prompt(*, validation_errors: list[str], previous_json: str) -> str:
-    errs = "\n".join(f"- {e}" for e in validation_errors) if validation_errors else "- (unknown)"
-    return (
-        "Your previous output did not match the required JSON schema.\n"
-        "Fix the JSON so it validates.\n\n"
-        "Validation errors:\n"
-        f"{errs}\n\n"
-        "Previous JSON output:\n"
-        f"{previous_json}\n\n"
-        "Return ONLY the corrected JSON object. No markdown, no extra text."
-    )
-
-
 def run_generate_validate_repair(
     *,
-    provider,
+    provider: LLMProvider,
     model: str,
     system: str,
     prompt: str,
     timeout_ms: int,
-    max_repair_attempts: int = 2,
-    max_retries: int = 2,
+    max_repair_attempts: int = MAX_REPAIR_ATTEMPTS,
+    max_retries: int = MAX_RETRIES,
 ) -> WorkflowResult:
     """
     Agentic loop: generate -> parse -> validate -> repair (if needed) -> finalize.
@@ -96,32 +132,11 @@ def run_generate_validate_repair(
         )
         logger.debug("LLM response received: %d chars", len(resp.text or ""))
 
-        try:
-            json_str = extract_first_json_object(resp.text)
-        except Exception as e:
-            raise SchemaAnalyzerError("Failed to extract JSON from LLM output", code="PARSE_ERROR", cause=e)
-
-        try:
-            data = json.loads(json_str)
-        except Exception as e:
-            raise SchemaAnalyzerError("LLM output was not valid JSON", code="PARSE_ERROR", cause=e)
-
-        errors = validate_analysis_output(data if isinstance(data, dict) else {})
-        if not errors:
-            logger.info("LLM output validated successfully after %d repair attempt(s)", repair_attempts)
-            return WorkflowResult(data=data, repair_attempts=repair_attempts)
-
-        if repair_attempts >= max_repair_attempts:
-            logger.warning("Validation failed after %d repair attempts: %s", repair_attempts, errors)
-            raise SchemaAnalyzerError(
-                "LLM output failed schema validation after repair attempts",
-                code="VALIDATION_ERROR",
-                cause=None,
-            )
-
+        result = _parse_and_validate(resp, repair_attempts, max_repair_attempts)
+        if isinstance(result, WorkflowResult):
+            return result
         repair_attempts += 1
-        logger.info("Validation failed, initiating repair attempt %d: %s", repair_attempts, errors)
-        current_prompt = _repair_prompt(validation_errors=errors, previous_json=json_str)
+        current_prompt = result
 
 
 async def _async_call_with_retry(
@@ -131,9 +146,9 @@ async def _async_call_with_retry(
     system: str,
     prompt: str,
     timeout_ms: int,
-    max_retries: int = 2,
-    base_delay: float = 1.0,
-):
+    max_retries: int = MAX_RETRIES,
+    base_delay: float = RETRY_BASE_DELAY,
+) -> LLMResponse:
     """Async version of _call_with_retry."""
     import asyncio
 
@@ -161,8 +176,8 @@ async def async_generate_validate_repair(
     system: str,
     prompt: str,
     timeout_ms: int,
-    max_repair_attempts: int = 2,
-    max_retries: int = 2,
+    max_repair_attempts: int = MAX_REPAIR_ATTEMPTS,
+    max_retries: int = MAX_RETRIES,
 ) -> WorkflowResult:
     """Async version of run_generate_validate_repair."""
     repair_attempts = 0
@@ -180,30 +195,9 @@ async def async_generate_validate_repair(
         )
         logger.debug("LLM response received: %d chars", len(resp.text or ""))
 
-        try:
-            json_str = extract_first_json_object(resp.text)
-        except Exception as e:
-            raise SchemaAnalyzerError("Failed to extract JSON from LLM output", code="PARSE_ERROR", cause=e)
-
-        try:
-            data = json.loads(json_str)
-        except Exception as e:
-            raise SchemaAnalyzerError("LLM output was not valid JSON", code="PARSE_ERROR", cause=e)
-
-        errors = validate_analysis_output(data if isinstance(data, dict) else {})
-        if not errors:
-            logger.info("LLM output validated successfully after %d repair attempt(s)", repair_attempts)
-            return WorkflowResult(data=data, repair_attempts=repair_attempts)
-
-        if repair_attempts >= max_repair_attempts:
-            logger.warning("Validation failed after %d repair attempts: %s", repair_attempts, errors)
-            raise SchemaAnalyzerError(
-                "LLM output failed schema validation after repair attempts",
-                code="VALIDATION_ERROR",
-                cause=None,
-            )
-
+        result = _parse_and_validate(resp, repair_attempts, max_repair_attempts)
+        if isinstance(result, WorkflowResult):
+            return result
         repair_attempts += 1
-        logger.info("Validation failed, initiating repair attempt %d: %s", repair_attempts, errors)
-        current_prompt = _repair_prompt(validation_errors=errors, previous_json=json_str)
+        current_prompt = result
 

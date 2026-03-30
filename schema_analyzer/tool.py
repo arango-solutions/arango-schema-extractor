@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
-from importlib.metadata import version as pkg_version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING, Any, Literal
 
 from arango import ArangoClient
@@ -16,6 +18,8 @@ from .exports import export_mapping
 from .owl_export import export_conceptual_model_as_owl_turtle
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_response_v1
+
+logger = logging.getLogger(__name__)
 
 
 Operation = Literal["analyze", "snapshot", "export", "docs", "owl"]
@@ -75,7 +79,10 @@ def _tooling_block(*, analysis: dict[str, Any] | None, snapshot: dict[str, Any] 
             tooling["usedBaseline"] = bool(md.get("used_baseline"))
             tooling["repairAttempts"] = int(md.get("repair_attempts") or 0)
     if snapshot and isinstance(snapshot, dict):
-        tooling["snapshotVersion"] = int(snapshot.get("version") or 0) if str(snapshot.get("version") or "").isdigit() else snapshot.get("version")
+        raw_ver = snapshot.get("version")
+        tooling["snapshotVersion"] = (
+            int(raw_ver or 0) if str(raw_ver or "").isdigit() else raw_ver
+        )
         tooling["snapshotFingerprint"] = fingerprint_physical_schema(snapshot, include_samples=False)
     tooling["libraryVersion"] = _library_version()
     return tooling
@@ -122,6 +129,8 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
     req_id = req_id if isinstance(req_id, str) and req_id else None
 
     try:
+        logger.info("Processing operation=%s requestId=%s", op, req_id)
+
         if op in ("snapshot", "analyze"):
             conn = request["connection"]
             db = _connect_db(conn)
@@ -168,6 +177,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 sample_limit_per_collection=sample_limit,
                 include_samples_in_snapshot=include_samples,
                 use_cache=bool(analysis_options.get("useCache", True)),
+                _snapshot=snapshot,
             )
 
             analysis_dict = {
@@ -194,7 +204,8 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             raise SchemaAnalyzerError("input.analysis is required", code="INVALID_ARGUMENT")
 
         if op == "export":
-            target = (output_options.get("exportTarget") if isinstance(output_options.get("exportTarget"), str) else "cypher")
+            raw_target = output_options.get("exportTarget")
+            target = raw_target if isinstance(raw_target, str) else "cypher"
             out = export_mapping(analysis_in, target=target)
             return _build_response(
                 op=op,
@@ -224,11 +235,23 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
         raise SchemaAnalyzerError(f"Unsupported operation: {op}", code="INVALID_ARGUMENT")
 
     except SchemaAnalyzerError as e:
+        logger.warning("Operation %s failed: [%s] %s", op, e.code, e)
         resp: dict[str, Any] = {
             "contractVersion": CONTRACT_VERSION,
             "operation": op,
             "ok": False,
             "error": {"code": e.code or "ERROR", "message": str(e)},
+        }
+        if req_id:
+            resp["requestId"] = req_id
+        return resp
+    except Exception as e:
+        logger.exception("Unexpected error during operation %s", op)
+        resp = {
+            "contractVersion": CONTRACT_VERSION,
+            "operation": op,
+            "ok": False,
+            "error": {"code": "INTERNAL_ERROR", "message": f"Unexpected error: {e}"},
         }
         if req_id:
             resp["requestId"] = req_id

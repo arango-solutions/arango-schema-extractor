@@ -6,7 +6,6 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-
 CONTRACT_VERSION = "1"
 
 

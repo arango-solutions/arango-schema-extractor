@@ -11,11 +11,11 @@ class ConceptualSchema:
     properties: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
-    def empty(cls) -> "ConceptualSchema":
+    def empty(cls) -> ConceptualSchema:
         return cls()
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "ConceptualSchema":
+    def from_json(cls, data: dict[str, Any]) -> ConceptualSchema:
         return cls(
             entities=list(data.get("entities", [])) if isinstance(data.get("entities", []), list) else [],
             relationships=list(data.get("relationships", []))

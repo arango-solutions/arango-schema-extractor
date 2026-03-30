@@ -39,7 +39,7 @@ testpaths = ["tests"]
 markers = [
   "integration: requires a running ArangoDB (typically via docker compose)"
 ]
-addopts = "--cov=schema_analyzer --cov-report=term-missing --cov-fail-under=60"
+addopts = "--cov=schema_analyzer --cov-report=term-missing --cov-fail-under=65"
 
 [tool.ruff]
 target-version = "py310"

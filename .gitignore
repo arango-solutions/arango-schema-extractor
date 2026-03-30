@@ -34,4 +34,5 @@ coverage.xml
 
 # Eval outputs
 eval_report*.json
+eval_*.json
 

@@ -4,7 +4,6 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-
 ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
     "$id": "https://arangodb.com/schema-analyzer/analysis-output.schema.json",
     "type": "object",

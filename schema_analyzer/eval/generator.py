@@ -5,7 +5,6 @@ import string
 from dataclasses import dataclass
 from typing import Any, Literal
 
-
 EntityStyle = Literal["COLLECTION", "GENERIC_WITH_TYPE"]
 RelStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
 
@@ -46,8 +45,7 @@ def _ensure_collection(db, name: str, *, edge: bool) -> Any:
 
 def _ensure_persistent_index(col, fields: list[str]) -> None:
     try:
-        # python-arango: add_persistent_index(fields, unique=False, sparse=False, name=None)
-        col.add_persistent_index(fields=fields, unique=False, sparse=False)
+        col.add_index({"type": "persistent", "fields": fields, "unique": False, "sparse": False})
     except Exception:
         pass
 

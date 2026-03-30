@@ -49,13 +49,12 @@ def test_analyze_with_mock_provider_parses_json(monkeypatch):
     }
     text = "here you go\n" + json.dumps(payload) + "\nthanks"
 
-    # Monkeypatch provider construction to return our fake provider
     import schema_analyzer.analyzer as analyzer_mod
 
-    def _fake_provider_from_name(name, api_key):
+    def _fake_create_provider(name, *, api_key):
         return FakeProvider(text)
 
-    monkeypatch.setattr(analyzer_mod, "_provider_from_name", _fake_provider_from_name)
+    monkeypatch.setattr(analyzer_mod, "create_provider", _fake_create_provider)
 
     analyzer = AgenticSchemaAnalyzer(llm_provider="openai", api_key="k", model="m")
     res = analyzer.analyze_physical_schema(FakeDB(), sample_limit_per_collection=0)
