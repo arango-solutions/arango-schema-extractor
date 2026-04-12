@@ -25,6 +25,13 @@ class AnalysisMetadata(BaseModel):
     model: str | None = None
     repair_attempts: int = Field(default=0, alias="repairAttempts")
     used_baseline: bool = Field(default=False, alias="usedBaseline")
+    # Provenance (§3.13 PRD): per-request identity, timing, physical schema linkage.
+    run_id: str | None = Field(default=None, alias="runId")
+    analysis_started_at: str | None = Field(default=None, alias="analysisStartedAt")
+    analysis_completed_at: str | None = Field(default=None, alias="analysisCompletedAt")
+    physical_schema_fingerprint: str | None = Field(default=None, alias="physicalSchemaFingerprint")
+    cache_hit: bool = Field(default=False, alias="cacheHit")
+    prompt_version: str | None = Field(default=None, alias="promptVersion")
 
 
 class AnalysisResult(BaseModel):
@@ -35,4 +42,3 @@ class AnalysisResult(BaseModel):
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-

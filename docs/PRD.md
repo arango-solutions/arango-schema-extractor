@@ -1,157 +1,390 @@
-Based on your requirements and the uploaded documents, I have designed a comprehensive **Product Requirements Document (PRD)** and **Implementation Plan** for the **Agentic Hybrid Schema Analyzer**.
+# Product Requirements Document (PRD)
 
-This system unifies your existing work on `arango-cypher`, `arango-sparql`, and `arango-sql` by creating a shared semantic understanding of the underlying physical data, regardless of whether it is stored as RDF, LPG, PG, or a hybrid of these.
+## **Project Name:** ArangoDB Schema Analyzer
+
+**Package**: `arangodb-schema-analyzer` (PyPI)
+**Import**: `schema_analyzer`
+**Language**: Python ≥ 3.10
+**Version**: 0.1.0
+
+**Companion codebase:** **Arango-OntoExtract (AOE)** is developed in the **`ontology_generator`** repository (underscore, not `ontology-generator`). A typical local layout is `~/code/ontology_generator` alongside this repo. Cross-references in this document mean that project.
 
 ---
-
-# Part 1: Product Requirements Document (PRD)
-
-## **Project Name:** Agentic Hybrid Schema Analyzer
 
 ### **1. Executive Summary**
 
-The **Agentic Hybrid Schema Analyzer** is a standalone library that uses algorithmic heuristics and Large Language Models (LLMs) to reverse-engineer a semantic **Conceptual Model (OWL Ontology)** from an existing ArangoDB **Physical Schema**. It simultaneously generates a machine-readable **Mapping Layer** that links the conceptual entities to their physical implementations. This enables language transpilers (Cypher, SPARQL, SQL) to generate correct AQL for hybrid schemas that mix RDF, LPG, and Property Graph patterns.
+The **ArangoDB Schema Analyzer** is a standalone Python library that uses algorithmic heuristics and Large Language Models (LLMs) to reverse-engineer a **conceptual model** from an existing ArangoDB physical schema. It simultaneously generates a machine-readable **mapping layer** that links conceptual entities to their physical implementations. This enables language transpilers (Cypher, SPARQL, SQL) to generate correct AQL for schemas that mix Property Graph and Labeled Property Graph patterns.
 
-### **2. Problem Statement**
+The system operates as:
+- A **Python library** (`AgenticSchemaAnalyzer`)
+- A **non-interactive CLI tool** (`arangodb-schema-analyzer`) using stdin/stdout JSON per the v1 tool contract
+- An **evaluation harness** for benchmarking analysis quality across domain packs
+- An **optional MCP server** (post–v0.1; see §3.11) that exposes the same operations as MCP tools for AI agents and IDEs
 
-ArangoDB schemas "in the wild" are often hybrids:
-
-* **Pure Graph (RDF-style):** Data in edge collections; types defined by edges to Class nodes.
-* **Property Graph (PG-style):** Typed vertex/edge collections (e.g., `Users`, `Follows`).
-* **Labeled Property Graph (LPG-style):** Generic collections with `type` attributes (e.g., Neo4j imports).
-* **Optimized Hybrids:** PG schemas with **Vertex-Centric Indexing (VCI)** (denormalized properties on edges) or GraphRAG structures (LPG data inside PG collections).
-
-Current transpilers rely on rigid assumptions. Without a unified map of *how* a concept is implemented, transpilers cannot generate optimized AQL for these hybrid scenarios.
-
-### **3. Functional Requirements**
-
-#### **3.1. Schema Reverse Engineering**
-
-The system must analyze an ArangoDB database and produce two artifacts:
-
-1. **Conceptual Schema (OWL 2 DL):** A standard ontology defining Classes, ObjectProperties (relationships), and DatatypeProperties (attributes).
-2. **Physical Mapping (RDF Annotations):** Metadata decorating the ontology that describes exactly how each OWL entity maps to ArangoDB collections, filters, or graph traversals.
-
-#### **3.2. Hybrid Pattern Detection**
-
-The system must automatically detect and classify schema fragments into:
-
-* **RPT (RDF Topology):** Detect `_triples` collections or graph structures using `rdf:type` edges.
-* **PGT (Property Graph Topology):** Detect typed vertex/edge collections based on naming conventions and graph definitions.
-* **LPG (Labeled Property Graph):** Detect generic node collections using discriminator fields (e.g., `type`, `label`).
-* **GraphRAG / Hybrid:** Detect specific templates, such as "LPG data stored in PG collections" or VCI optimization patterns.
-
-#### **3.3. Agentic Semantic Enrichment**
-
-Where heuristics fail, the system must use an LLM to:
-
-* **Infer Semantics:** Map cryptic physical names (e.g., `c_102`) to semantic concepts (e.g., `Customer`) based on property analysis.
-* **Resolve Ambiguity:** Determine if a generic edge collection represents a specific relationship type based on the types of nodes it connects.
-
-#### **3.4. Output Specification**
-
-The output must be a serialized OWL ontology (Turtle/JSON-LD) containing custom mapping annotations:
-
-* `phys:collectionName`: The physical collection.
-* `phys:mappingStyle`: `COLLECTION`, `LABEL`, `TRIPLE`, or `VCI`.
-* `phys:typeField`: The attribute used for filtering (if LPG).
-* `phys:vciField`: The property on an edge that duplicates a vertex property.
+**Quality and lineage (directional):** v0.1 ships **metadata confidence**, **review gating**, and **offline eval F1 scores** against domain packs. Broader **ontology-quality metrics** and **temporal provenance** for re-analysis and schema drift are specified in §3.12 and §3.13 to align with the patterns used in **Arango-OntoExtract (AOE)** (`ontology_generator` — multi-signal scoring, health score, extraction run records, and temporal diff).
 
 ---
 
-# Part 2: Implementation Plan
+### **2. Problem Statement**
 
-This plan integrates your existing detection logic into a multi-stage pipeline.
+ArangoDB schemas "in the wild" follow different modeling conventions:
 
-### **Phase 1: Architecture & Core Heuristics (Weeks 1-2)**
+* **Property Graph (PG):** Typed vertex/edge collections (e.g., `Users`, `Follows`) — one collection per concept.
+* **Labeled Property Graph (LPG):** Generic collections with discriminator fields (e.g., a single `entities` collection with a `type` field distinguishing `User`, `Post`, etc.).
+* **Hybrid:** Combinations where some concepts use dedicated collections and others share generic collections with type fields.
 
-**Goal:** Consolidate existing detection logic into a unified `PhysicalIntrospector`.
+Without a unified map of *how* a concept is physically implemented, transpilers cannot generate correct AQL. This library produces that map.
 
-1. **Create `PhysicalIntrospector` Class:**
-* Merge logic from `model-detector.js` (RDF/RPT detection) and `graph-model-detector.js` (LPG/PG detection).
-* **Input:** Database handle.
-* **Output:** `PhysicalSchemaMetadata` JSON (collections, edge definitions, index definitions, sample documents).
+---
 
+### **3. Functional Requirements**
 
-2. **Implement Template Matcher:**
-* Create a library of "Schema Templates" to recognize known patterns before calling the LLM.
-* **Template A (Pure PG):** Distinct vertex collections, no discriminator fields.
-* **Template B (Pure LPG):** Single vertex/edge collections with `label`/`type` fields.
-* **Template C (GraphRAG):** Specific hybrid style (e.g., text chunks in one collection, entities in another, connected by similarity edges).
-* **Template D (VCI Optimization):** Edge collections containing properties that also exist on connected vertices (e.g., `_from_type`, `date`).
+#### **3.1. Physical Schema Introspection**
 
+The system must connect to an ArangoDB database and produce a deterministic **physical schema snapshot** containing:
+- Collection metadata (name, type, count, properties, indexes)
+- Named graph definitions (edge definitions, orphan collections)
+- Candidate type fields detected from sample documents
+- Sample field value distributions for type-field inference
 
+**Implementation**: `snapshot_physical_schema()` in `snapshot.py`.
 
-### **Phase 2: OWL Ontology Construction (Weeks 3-4)**
+#### **3.2. Conceptual Schema Inference**
 
-**Goal:** Build the `ConceptualModelBuilder` that generates the OWL structure.
+The system must produce a **conceptual schema** with:
+- **Entities**: named types with labels and properties (e.g., `User`, `Post`)
+- **Relationships**: typed directed edges between entities (e.g., `FOLLOWS: User → User`)
+- **Properties**: global property definitions
 
-1. **Define Mapping Vocabulary (`phys` ontology):**
-* Create the Turtle definition for your custom annotations (`phys:mappingStyle`, `phys:edgeCollection`, etc.).
+**Implementation**: `ConceptualSchema` dataclass in `conceptual.py`.
 
+#### **3.3. Physical Mapping Generation**
 
-2. **Implement `OWLBuilder` Class:**
-* Use `rdflib.js` or `n3`.
-* Method `addClass(name, physicalMapping)`: Creates `owl:Class` and adds `phys:` annotations.
-* Method `addProperty(name, domain, range, physicalMapping)`: Creates `owl:ObjectProperty` and adds mappings.
+The system must produce a **conceptual → physical mapping** describing how each conceptual entity/relationship maps to ArangoDB collections:
 
+| Mapping Style | Entity/Relationship | Description |
+|---|---|---|
+| `COLLECTION` | Entity | One document collection per entity type |
+| `LABEL` | Entity | Shared collection filtered by `typeField == typeValue` |
+| `DEDICATED_COLLECTION` | Relationship | One edge collection per relationship type |
+| `GENERIC_WITH_TYPE` | Relationship | Shared edge collection filtered by `typeField == typeValue` |
 
-3. **Heuristic-to-OWL Translation:**
-* Map "Collections detected as Vertex Tables" → `owl:Class` (Mapping: `COLLECTION`).
-* Map "Discriminator values in generic tables" → `owl:Class` (Mapping: `LABEL`).
-* Map "Edge Collections" → `owl:ObjectProperty` (Mapping: `DEDICATED_COLLECTION`).
+**Implementation**: `PhysicalMapping` dataclass in `mapping.py`, with `aql_entity_match()` and `aql_relationship_traversal()` helper methods that produce injection-safe AQL fragments.
 
+#### **3.4. Hybrid Pattern Detection**
 
+The system must automatically detect and classify physical schema patterns:
 
-### **Phase 3: Agentic Reasoning Pipeline (Weeks 5-6)**
+- **PG (Property Graph):** Distinct vertex collections, no discriminator fields → `COLLECTION` / `DEDICATED_COLLECTION` mapping.
+- **LPG (Labeled Property Graph):** Generic node/edge collections with discriminator fields (`type`, `kind`, `label`, `relation`, `relType`) → `LABEL` / `GENERIC_WITH_TYPE` mapping.
 
-**Goal:** Use LLM to bridge the gap between "Physical Structure" and "Semantic Meaning".
+Detection uses candidate type field analysis from `sample_field_value_counts` in the snapshot.
 
-1. **Prompt Engineering:**
-* **Input:** Serialized `PhysicalSchemaMetadata` + Sample Documents (from Phase 1).
-* **Task:** "Identify the semantic concepts. If a collection is named `c_102` but contains `firstName` and `lastName`, rename the concept to `Person`. Identify if `orders` edges connect `Person` to `Product`."
-* **Hybrid Resolution:** "The `users` collection is a standard Document collection, but the `knowledge` collection uses RDF-style edges. Create a unified model where `User` (PG) `creates` (Edge) `Knowledge` (RDF)."
+**Implementation**: Baseline heuristic inference in `baseline.py` (`infer_baseline_from_snapshot()`).
 
+#### **3.5. Agentic Semantic Enrichment (LLM)**
 
-2. **Agent Loop:**
-* **Step 1:** Run Heuristics. If `confidence > 0.9` (e.g., perfect GraphRAG match), skip LLM.
-* **Step 2:** Generate Prompt with physical stats.
-* **Step 3:** LLM generates JSON describing Conceptual-to-Physical map.
-* **Step 4:** `OWLBuilder` converts JSON to annotated OWL.
+When an LLM provider is configured, the system uses it to:
+- Infer richer semantics than heuristics alone (entity naming, relationship endpoint resolution)
+- Generate a conceptual schema + mapping from the physical snapshot
+- Self-repair via a generate → validate → repair loop
 
+When no LLM is available (no provider or no API key), the system **degrades gracefully** to deterministic baseline inference.
 
+**Human-in-the-loop:** `metadata.review_required` (with `confidence` vs `reviewThreshold`) signals that outputs are **provisional**. This library does not implement curation UIs; consumers (e.g. **AOE** in `ontology_generator`) own approval, edit, and promotion workflows.
 
-### **Phase 4: Transpiler Integration (Weeks 7-8)**
+**Implementation**: `AgenticSchemaAnalyzer` in `analyzer.py`, with the generate-validate-repair loop in `workflow.py`.
 
-**Goal:** Connect `arango-cypher` and `arango-sparql` to read the OWL.
+#### **3.6. LLM Provider Support**
 
-1. **Update Transpilers:**
-* Modify `arango-cypher` to accept an `owl_schema.ttl` file configuration.
-* Replace hardcoded query generation logic with a **Mapping-Driven Query Builder**.
-* **Example Logic:**
-* *Query:* `MATCH (n:User)`
-* *Lookup:* `User` in OWL → `phys:mappingStyle = COLLECTION`, `phys:collectionName = "users_v2"`.
-* *Generate:* `FOR n IN users_v2` (PG style).
-* *Alternative:* `User` in OWL → `phys:mappingStyle = LABEL`, `phys:collectionName = "nodes"`, `phys:typeVal = "USR"`.
-* *Generate:* `FOR n IN nodes FILTER n.type == 'USR'` (LPG style).
+The system supports multiple LLM providers via a pluggable registry:
 
+| Provider | SDK | Default Model |
+|---|---|---|
+| OpenAI | `openai` (optional extra) | `gpt-4o-mini` |
+| Anthropic | `anthropic` (optional extra) | `claude-3-5-sonnet-latest` |
+| OpenRouter | stdlib `urllib` (no extra) | `openai/gpt-4o-mini` |
 
+Custom providers can be registered via `register_provider()`.
 
+**Implementation**: `providers/` package with `LLMProvider` protocol in `providers/base.py`.
 
+#### **3.7. Output Formats**
 
-### **Phase 5: Optimization & Caching (Week 9)**
+The system produces multiple output formats:
 
-**Goal:** Ensure performance via caching as per the PRD.
+| Format | Operation | Description |
+|---|---|---|
+| Analysis JSON | `analyze` | Conceptual schema + physical mapping + metadata |
+| Physical Snapshot | `snapshot` | Deterministic physical schema introspection |
+| Export JSON | `export` | Stable JSON for transpiler consumption (v0.1: Cypher) |
+| Markdown Docs | `docs` | Human-readable schema documentation |
+| OWL Turtle | `owl` | Conceptual schema + physical mapping as OWL 2 ontology with `phys:` annotation properties |
 
-1. **Fingerprinting:** Generate a hash of the database schema (collection names + indexes).
-2. **Cache Storage:** Store the generated `.ttl` file in a system collection `_schema_cache`.
-3. **Validation:** If the schema hash changes, trigger a re-run of the Agentic Analyzer.
+**Implementation**: `docs.py`, `exports.py`, `owl_export.py`.
 
-## **Summary of Key Technologies**
+#### **3.8. Tool Contract (v1)**
 
-* **Ontology Format:** OWL 2 DL (Turtle serialization).
-* **Mapping Format:** RDF Custom Annotations.
-* **Detection:** Heuristic Templates (Regex/Stats) + LLM (Semantic Inference).
-* **Integration:** NPM Package `@arangodb/schema-analyzer`.
+The system exposes a **stable non-interactive JSON API** defined by JSON Schema:
 
-This plan moves you from hardcoded "model detectors" to a flexible, declarative system where the "Schema" is data that the transpilers read, allowing them to support any hybrid architecture the analyzer can describe.
+- **Request schema**: `docs/tool-contract/v1/request.schema.json`
+- **Response schema**: `docs/tool-contract/v1/response.schema.json`
+
+Operations: `analyze`, `snapshot`, `export`, `docs`, `owl`.
+
+All requests and responses are validated against the JSON Schema. Failures return structured `{ "ok": false, "error": { "code": "...", "message": "..." } }` responses for both expected errors (`SchemaAnalyzerError`) and unexpected exceptions.
+
+**Implementation**: `tool.py` (entrypoint), `tool_contract_v1.py` (schema loading and validation).
+
+#### **3.9. CLI**
+
+Two modes:
+
+1. **Tool mode** (default): `arangodb-schema-analyzer [--request FILE] [--pretty] [--out FILE]` — stdin/stdout JSON using the v1 contract.
+2. **Eval mode**: `arangodb-schema-analyzer eval [--provider NAME] [--model NAME] [--domains LIST] [--report FILE] [--baseline FILE]` — run evaluation benchmarks.
+
+**Implementation**: `cli.py`.
+
+#### **3.10. Evaluation Harness**
+
+The system includes a domain-based evaluation framework:
+
+- **Domain packs** (in `domains/`): ground-truth conceptual models for healthcare, financial fraud detection, insurance, intelligence, and network asset management.
+- **Physical schema generator**: materializes multiple physical schema variants (PG + LPG) from each domain spec with seeded sample data.
+- **Scoring**: entity F1, relationship F1, domain/range F1, mapping style accuracy.
+- **Report comparison**: diff two eval reports to track quality regressions/improvements.
+
+**Implementation**: `eval/` package (`domain_loader.py`, `generator.py`, `runner.py`, `scoring.py`).
+
+#### **3.11. MCP Server (optional integration surface)**
+
+**Purpose:** Expose schema-analyzer operations through the **Model Context Protocol (MCP)** so MCP-capable clients (e.g. Cursor, custom agents) can call **analyze**, **snapshot**, **export**, **docs**, and **owl** without bespoke subprocess glue.
+
+**Relationship to the v1 tool contract:** MCP tools are a **thin adapter** over the same inputs/outputs as `run_tool()` / CLI JSON (see §3.8). Parameter schemas should stay aligned with `docs/tool-contract/v1/request.schema.json` (subset per tool).
+
+**Suggested MCP tools (illustrative):**
+
+| MCP tool | Maps to operation | Notes |
+|---|---|---|
+| `schema_analyzer_snapshot` | `snapshot` | Connection + `analysisOptions` |
+| `schema_analyzer_analyze` | `analyze` | Connection + optional `llm` + `analysisOptions` |
+| `schema_analyzer_export` | `export` | `input.analysis` + `exportTarget` |
+| `schema_analyzer_docs` | `docs` | `input.analysis` |
+| `schema_analyzer_owl` | `owl` | `input.analysis` |
+
+**Requirements:**
+
+- **Secrets:** Prefer env-indirection (`passwordEnvVar`, `apiKeyEnvVar`) in tool parameters; document that inline secrets in MCP payloads inherit the same risks as inline JSON secrets (logs, transcripts).
+- **Errors:** Surface contract-shaped errors (`ok: false`, typed `code`) to the client.
+- **Transports:** Support at least **stdio** for local IDE use; **SSE** (or equivalent) optional for remote agents.
+- **Implementation status:** Not part of v0.1 core deliverables; tracked as integration packaging (separate entrypoint or sibling package acceptable).
+
+**Reference:** AOE documents a full MCP surface for ontology library and extraction (`ontology_generator` PRD §6.10); this project scopes MCP to **schema reverse-engineering and mapping** only.
+
+#### **3.12. Quality metrics — extraction and ontology structure**
+
+This library produces a **conceptual schema** and **physical mapping**, optionally serialized as **OWL Turtle** (§3.7). Quality measurement spans **offline benchmarks** (today) and **production-oriented metrics** (target, aligned with AOE §6.13 where applicable).
+
+**3.12.1. Implemented (v0.1) — eval harness**
+
+| Metric | Description |
+|---|---|
+| Entity F1 | Precision/recall/F1 over normalized entity names vs domain-pack ground truth |
+| Relationship F1 | Over relationship types |
+| Domain/range F1 | Over relationship signatures (type + endpoints) |
+| Mapping-style accuracy | Agreement with expected COLLECTION / LABEL / DEDICATED_COLLECTION / GENERIC_WITH_TYPE patterns |
+
+**3.12.2. Per-run metadata (v0.1)**
+
+| Signal | Use |
+|---|---|
+| `metadata.confidence` | Single scalar; gating with `review_required` vs `reviewThreshold` |
+| `metadata.warnings` / `assumptions` | Human review queues |
+| `used_baseline`, `repair_attempts` | Explains whether LLM path ran and how much self-repair occurred |
+
+**3.12.3. Target — richer ontology / extraction quality (roadmap)**
+
+Inspired by **AOE** (`ontology_generator`): multi-signal confidence, structural ontology metrics, and composite scores. Mapped to **schema-derived** artifacts (no document chunks unless optional domain context is added later):
+
+| Category | Intended metrics | Notes |
+|---|---|---|
+| **Structural (schema-derived)** | Relationship connectivity (entities participating in ≥1 relationship), orphan entity ratio, property richness on conceptual entities, cycle / inconsistency flags | Analogous to AOE “connectivity” and OntoQA-style structural checks, applied to conceptual graph + mapping completeness |
+| **Grounding vs physical** | Agreement of mapping with snapshot (every mapped collection exists; type fields appear in `sample_field_value_counts` when sampled) | Faithfulness-to-schema analogue of AOE faithfulness-to-chunks |
+| **Gold comparison** | Optional recall/precision vs a supplied reference OWL/TTL or domain pack | Analogous to AOE gold-standard recall (`POST /quality/recall` pattern) |
+| **Composite** | Normalized **health score** (0–100) combining structural + confidence + optional gold overlap | Analogous to AOE ontology health score |
+| **History** | Store metric snapshots per analysis run for trend lines | Analogous to AOE `quality_history` / dashboard history |
+
+**Requirements (acceptance for “metrics complete” milestones):**
+
+- Eval metrics remain the **regression gate** for releases (CI compares reports to baselines).
+- Any new composite score must document **inputs, formula, and failure modes** (e.g. empty relationship set).
+- Production metrics must not require sending full snapshots to third parties unless explicitly configured.
+
+#### **3.13. Temporal provenance, runs, and schema-change lineage**
+
+**Problem:** Consumers need to know **when** an analysis was produced, **what physical schema** it reflected, and **what changed** after a database or mapping evolves — especially for **ontology update cycles** driven by graph schema changes.
+
+**AOE reference:** `ontology_generator` uses **extraction run** documents (`started_at`, `completed_at`, `model`, `prompt_version`, stats), **temporal versioning** on ontology entities (`created` / `expired` intervals), **point-in-time snapshot** APIs, and **temporal diff** between timestamps (PRD §5.3, §6.5, data model for `extraction_runs`, `quality_history`).
+
+**3.13.1. Minimum viable (target for schema-analyzer)**
+
+| Element | Requirement |
+|---|---|
+| **Analysis run identity** | Each `analyze` produces a stable **run id** (UUID) and records **ISO-8601 timestamps** for start/end (or single `completed_at` if synchronous). |
+| **Physical schema linkage** | Persist **snapshot fingerprint** (existing SHA-256, §4.1) and **library + contract version** on the result object. |
+| **LLM lineage** | When LLM is used: `provider`, `model`, optional **`promptVersion`** / **system prompt hash** (no raw prompt in logs by default). |
+| **Reproducibility** | Cache hits remain keyed by fingerprint; run records distinguish “served from cache at time T” vs “fresh LLM at time T”. |
+
+**3.13.2. Element-level provenance (target)**
+
+| Element | Requirement |
+|---|---|
+| Conceptual entities / relationships | Optional fields: `firstSeenAt`, `lastValidatedAt`, `source` (`baseline` \| `llm` \| `human`) |
+| Mapping entries | Same lineage fields where useful for auditing COLLECTION vs LABEL decisions |
+
+**3.13.3. Change detection and diff (target)**
+
+| Capability | Requirement |
+|---|---|
+| **Trigger re-analysis** | When physical fingerprint changes, flag prior analysis as **stale** or auto-queue re-run (product policy). |
+| **Diff** | Compare two `AnalysisResult` payloads (or OWL exports): added/removed/changed entities, relationships, and mapping styles — analogous to AOE `get_ontology_diff` but scoped to **schema-derived conceptual models**. |
+
+**3.13.4. Full temporal graph (optional / long-term)**
+
+Full **edge-interval time travel** for every conceptual entity (AOE-style `created`/`expired` on all versions) is **not** required for v0.1. If schema-analyzer outputs are **imported into AOE**, AOE’s temporal layer can own fine-grained history; this PRD still requires **run-level** and **fingerprint-level** provenance here so handoffs are auditable.
+
+---
+
+### **4. Non-Functional Requirements**
+
+#### **4.1. Caching**
+
+- Filesystem-based cache keyed by physical schema fingerprint (SHA-256 of normalized snapshot)
+- Configurable TTL (default 86400s / 24h)
+- `generated_at` timestamp excluded from fingerprint for stability
+
+**Implementation**: `cache.py` (`AnalysisCache` / `FilesystemCache`).
+
+#### **4.2. Determinism**
+
+- All outputs (snapshots, fingerprints, JSON) are deterministically ordered
+- `stable_dumps()` with `sort_keys=True` ensures reproducibility
+- Collection iteration is sorted alphabetically
+
+#### **4.3. Security**
+
+- API keys accepted via env vars (`passwordEnvVar`, `apiKeyEnvVar`) — preferred over inline secrets
+- Secrets are never logged or persisted by the library
+- AQL fragments use bind parameters exclusively — no string interpolation of collection names
+- **Trust boundary — LLM:** When a provider is configured, **physical schema snapshots** (and optional samples) may be transmitted to the vendor API. The PRD treats this as **customer-configured data egress**; documentation and the tool contract must make that explicit. Redaction modes (strip samples, mask field names) are a future hardening item.
+- **Untrusted structured output:** Conceptual and mapping payloads may originate from an LLM. Downstream use (e.g. AQL helpers) assumes **validated** mapping shapes; stricter validation (allowlists for collection names and attribute keys from the snapshot) is encouraged where security goals exceed “best effort.”
+- **Filesystem cache:** Cached analysis may contain sensitive schema metadata; deployments should restrict cache directory permissions and disk encryption as appropriate.
+
+#### **4.4. Error Handling**
+
+- All domain errors use `SchemaAnalyzerError` with typed `code` field
+- Tool entrypoint catches both `SchemaAnalyzerError` and unexpected `Exception`, returning contract-shaped error responses
+- LLM workflow retries transient `PROVIDER_ERROR` failures with exponential backoff
+
+#### **4.5. Configuration**
+
+Tunable defaults are centralized in `defaults.py`:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `MAX_REPAIR_ATTEMPTS` | 2 | LLM output validation repair attempts |
+| `MAX_RETRIES` | 2 | Transient provider error retries |
+| `RETRY_BASE_DELAY` | 1.0s | Exponential backoff base |
+| `LLM_TEMPERATURE` | 0.0 | Sampling temperature for all providers |
+| `ANTHROPIC_MAX_TOKENS` | 4096 | Max tokens for Anthropic/OpenRouter |
+| `DEFAULT_TIMEOUT_MS` | 60000 | Analysis timeout |
+| `DEFAULT_REVIEW_THRESHOLD` | 0.6 | Confidence below this triggers `review_required` |
+| `DEFAULT_CACHE_TTL_SECONDS` | 86400 | Cache time-to-live |
+| `SAMPLE_VALUE_TOP_K` | 20 | Max distinct values per candidate type field |
+
+#### **4.6. Testing**
+
+- Unit tests with 65%+ coverage threshold
+- Integration tests (opt-in via `RUN_INTEGRATION=1`) against Docker ArangoDB
+- Golden snapshot tests for determinism validation
+- CI: lint (ruff + mypy), test matrix (Python 3.10–3.12), integration on PRs
+
+#### **4.7. Tool contract fidelity**
+
+Fields in `docs/tool-contract/v1/request.schema.json` **must either be implemented** in `tool.py` / `AgenticSchemaAnalyzer` **or be explicitly marked deferred** in this PRD and in schema descriptions. Implemented: **`connection.verifyTls`** (maps to python-arango `verify_override`), **`analysisOptions.maxRepairAttempts`**, **`llm.systemPrompt`**, **`llm.promptVersion`** (participates in LLM cache key with the effective system prompt). Still deferred / future: **`domainContext`** and richer redaction modes. Drift between schema and code undermines agent workflows that rely on the contract.
+
+---
+
+### **5. Architecture**
+
+```
+┌─────────────────────────────────────────────────┐
+│          CLI / Tool API  │  MCP adapter (opt.)   │
+│       (cli.py / tool.py) │  (future, §3.11)      │
+├─────────────────────────────────────────────────┤
+│              AgenticSchemaAnalyzer               │
+│                (analyzer.py)                     │
+├──────────┬──────────────┬───────────────────────┤
+│ Snapshot │   Workflow   │   Baseline Inference   │
+│(snapshot)│  (workflow)  │     (baseline.py)      │
+├──────────┤              ├───────────────────────┤
+│          │  Providers   │                       │
+│          │  (providers/)│    Validation         │
+│          │              │   (validation.py)     │
+├──────────┴──────────────┴───────────────────────┤
+│   ConceptualSchema │ PhysicalMapping │ Cache    │
+│   (conceptual.py)  │  (mapping.py)  │(cache.py)│
+├─────────────────────────────────────────────────┤
+│          Exports: docs / export / owl           │
+│     (docs.py / exports.py / owl_export.py)      │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+### **6. Roadmap (Post v0.1)**
+
+#### **6.1. Additional Mapping Styles**
+- `TRIPLE` — for RDF-style schemas with `_triples` collections and `rdf:type` edges
+- `VCI` — for Vertex-Centric Index optimization patterns (denormalized properties on edges)
+
+#### **6.2. Enhanced Pattern Detection**
+- RPT (RDF Topology) detection: `_triples` collections, `rdf:type` edges
+- VCI optimization pattern detection: edge properties that duplicate vertex properties
+- GraphRAG template matching: text chunks + entities + similarity edges
+
+#### **6.3. Richer OWL Support**
+- Class hierarchies (`rdfs:subClassOf`)
+- Property characteristics (`owl:functional`, `owl:inverseOf`)
+- Cardinality constraints
+- JSON-LD export format alongside Turtle
+- Integration with OWL reasoners for consistency checking
+
+#### **6.4. Transpiler Integration**
+- Direct integration with `arango-cypher` to consume mapping output
+- SPARQL query generation from OWL conceptual schema
+- SQL mapping for relational query translation
+
+#### **6.5. Advanced Features**
+- **Schema evolution and lineage** — See §3.13 (run records, fingerprint linkage, diff between analyses, stale detection). Optional alignment with AOE temporal imports when analyses are promoted into `ontology_generator`.
+- **Quality metrics expansion** — See §3.12.3 (structural ontology metrics, optional gold recall, health score, metric history).
+- Confidence calibration from eval feedback loops
+- Streaming/incremental analysis for large databases
+- Custom provider SDK support beyond OpenAI/Anthropic/OpenRouter
+- **MCP packaging** — Standalone MCP server or module as in §3.11
+
+---
+
+### **7. Dependencies**
+
+#### Core
+- `python-arango ≥ 8.1.1` — ArangoDB client
+- `pydantic ≥ 2.6.0` — data validation and metadata models
+- `jsonschema ≥ 4.21.0` — tool contract validation
+
+#### Optional
+- `openai ≥ 1.0.0` — OpenAI provider
+- `anthropic ≥ 0.25.0` — Anthropic provider
+
+#### Dev
+- `pytest`, `pytest-cov`, `ruff`, `mypy`

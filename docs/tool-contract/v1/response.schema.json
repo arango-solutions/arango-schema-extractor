@@ -20,7 +20,13 @@
         "snapshotFingerprint": { "type": "string" },
         "snapshotVersion": { "type": "integer" },
         "usedBaseline": { "type": "boolean" },
-        "repairAttempts": { "type": "integer", "minimum": 0 }
+        "repairAttempts": { "type": "integer", "minimum": 0 },
+        "runId": { "type": "string", "description": "Analysis run UUID when operation was analyze" },
+        "physicalSchemaFingerprint": {
+          "type": "string",
+          "description": "SHA-256 of normalized physical snapshot (analyze tooling mirror of metadata)"
+        },
+        "cacheHit": { "type": "boolean", "description": "True when analyze result was served from cache" }
       }
     },
 

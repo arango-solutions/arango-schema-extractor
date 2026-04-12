@@ -21,6 +21,31 @@ def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def analysis_cache_storage_key(physical_fingerprint: str, *, llm_cache_segment: str | None) -> str:
+    """
+    Filesystem-safe cache filename stem.
+
+    Baseline / no-LLM analysis is keyed only by the physical schema fingerprint.
+    LLM runs also incorporate prompt version and effective system prompt so cache
+    entries do not collide when prompts differ.
+    """
+    if not llm_cache_segment:
+        return physical_fingerprint
+    return sha256_hex(f"{physical_fingerprint}\n{llm_cache_segment}")
+
+
+def singularize(name: str) -> str:
+    """Best-effort English singularization for collection/entity names."""
+    n = name.strip()
+    if n.endswith("ies") and len(n) > 3:
+        return n[:-3] + "y"
+    if n.endswith("sses") and len(n) > 4:
+        return n[:-2]
+    if n.endswith("s") and not n.endswith("ss") and len(n) > 1:
+        return n[:-1]
+    return n
+
+
 def pascal_case(name: str) -> str:
     """Convert snake_case, kebab-case, or space-separated name to PascalCase."""
     parts = [p for p in str(name).replace("-", "_").replace(" ", "_").split("_") if p]
@@ -64,4 +89,3 @@ def extract_first_json_object(text: str) -> str:
                 return text[start : i + 1]
 
     raise ValueError("Unterminated JSON object")
-

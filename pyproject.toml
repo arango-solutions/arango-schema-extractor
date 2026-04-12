@@ -16,6 +16,7 @@ dependencies = [
 openai = ["openai>=1.0.0"]
 anthropic = ["anthropic>=0.25.0"]
 openrouter = []  # uses stdlib urllib; listed for feature discoverability
+mcp = ["mcp>=1.2.0"]
 dev = [
   "pytest>=8.0.0",
   "pytest-cov>=5.0.0",
@@ -29,6 +30,7 @@ Repository = ""
 
 [project.scripts]
 arangodb-schema-analyzer = "schema_analyzer.cli:main"
+arangodb-schema-analyzer-mcp = "schema_analyzer.mcp_server:main"
 
 [build-system]
 requires = ["hatchling>=1.21.0"]

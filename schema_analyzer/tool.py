@@ -12,6 +12,13 @@ if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
 from .analyzer import AgenticSchemaAnalyzer
+from .defaults import (
+    DEFAULT_CACHE_TTL_SECONDS,
+    DEFAULT_EXPORT_TARGET,
+    DEFAULT_REVIEW_THRESHOLD,
+    DEFAULT_TIMEOUT_MS,
+    FALLBACK_LIBRARY_VERSION,
+)
 from .docs import generate_schema_docs
 from .errors import SchemaAnalyzerError
 from .exports import export_mapping
@@ -29,7 +36,7 @@ def _library_version() -> str:
     try:
         return pkg_version("arangodb-schema-analyzer")
     except PackageNotFoundError:
-        return "0.0.0-dev"
+        return FALLBACK_LIBRARY_VERSION
 
 
 def _env(name: str) -> str | None:
@@ -67,7 +74,10 @@ def _connect_db(conn: dict[str, Any]) -> StandardDatabase:
     pw = _get_password(conn)
     if pw is None:
         raise SchemaAnalyzerError("Missing ArangoDB password (password or passwordEnvVar)", code="INVALID_ARGUMENT")
-    client = ArangoClient(hosts=url)
+    verify_tls = conn.get("verifyTls", True)
+    if not isinstance(verify_tls, bool):
+        verify_tls = True
+    client = ArangoClient(hosts=url, verify_override=verify_tls)
     return client.db(db_name, username=username, password=pw)
 
 
@@ -78,11 +88,15 @@ def _tooling_block(*, analysis: dict[str, Any] | None, snapshot: dict[str, Any] 
         if isinstance(md, dict):
             tooling["usedBaseline"] = bool(md.get("used_baseline"))
             tooling["repairAttempts"] = int(md.get("repair_attempts") or 0)
+            if md.get("runId"):
+                tooling["runId"] = md["runId"]
+            if md.get("physicalSchemaFingerprint"):
+                tooling["physicalSchemaFingerprint"] = md["physicalSchemaFingerprint"]
+            if "cacheHit" in md:
+                tooling["cacheHit"] = bool(md.get("cacheHit"))
     if snapshot and isinstance(snapshot, dict):
         raw_ver = snapshot.get("version")
-        tooling["snapshotVersion"] = (
-            int(raw_ver or 0) if str(raw_ver or "").isdigit() else raw_ver
-        )
+        tooling["snapshotVersion"] = int(raw_ver or 0) if str(raw_ver or "").isdigit() else raw_ver
         tooling["snapshotFingerprint"] = fingerprint_physical_schema(snapshot, include_samples=False)
     tooling["libraryVersion"] = _library_version()
     return tooling
@@ -153,13 +167,23 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
 
         if op == "analyze":
             llm = request.get("llm") if isinstance(request.get("llm"), dict) else None
+            raw_max_rep = analysis_options.get("maxRepairAttempts")
+            max_repair = int(raw_max_rep) if raw_max_rep is not None else None
+            sys_prompt = llm.get("systemPrompt") if llm else None
+            if isinstance(sys_prompt, str) and not sys_prompt.strip():
+                sys_prompt = None
+            pv = llm.get("promptVersion") if llm else None
+            prompt_version = pv if isinstance(pv, str) and pv.strip() else None
             analyzer = AgenticSchemaAnalyzer(
                 llm_provider=(llm.get("provider") if llm else None),
                 api_key=_get_api_key(llm),
                 model=(llm.get("model") if llm else None),
                 cache=(analysis_options.get("cache") if isinstance(analysis_options.get("cache"), dict) else None),
-                cache_ttl_seconds=int(analysis_options.get("cacheTtlSeconds") or 86400),
-                review_threshold=float(analysis_options.get("reviewThreshold") or 0.6),
+                cache_ttl_seconds=int(analysis_options.get("cacheTtlSeconds") or DEFAULT_CACHE_TTL_SECONDS),
+                review_threshold=float(analysis_options.get("reviewThreshold") or DEFAULT_REVIEW_THRESHOLD),
+                system_prompt=sys_prompt,
+                prompt_version=prompt_version,
+                max_repair_attempts=max_repair,
             )
 
             include_samples = bool(analysis_options.get("includeSamplesInSnapshot") or False)
@@ -173,7 +197,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
 
             analysis = analyzer.analyze_physical_schema(
                 db,
-                timeout_ms=int(analysis_options.get("timeoutMs") or 60000),
+                timeout_ms=int(analysis_options.get("timeoutMs") or DEFAULT_TIMEOUT_MS),
                 sample_limit_per_collection=sample_limit,
                 include_samples_in_snapshot=include_samples,
                 use_cache=bool(analysis_options.get("useCache", True)),
@@ -205,7 +229,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
 
         if op == "export":
             raw_target = output_options.get("exportTarget")
-            target = raw_target if isinstance(raw_target, str) else "cypher"
+            target = raw_target if isinstance(raw_target, str) else DEFAULT_EXPORT_TARGET
             out = export_mapping(analysis_in, target=target)
             return _build_response(
                 op=op,
@@ -245,15 +269,17 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
         if req_id:
             resp["requestId"] = req_id
         return resp
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error during operation %s", op)
         resp = {
             "contractVersion": CONTRACT_VERSION,
             "operation": op,
             "ok": False,
-            "error": {"code": "INTERNAL_ERROR", "message": f"Unexpected error: {e}"},
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An internal error occurred. Check server logs for details.",
+            },
         }
         if req_id:
             resp["requestId"] = req_id
         return resp
-

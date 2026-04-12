@@ -4,12 +4,16 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..analyzer import AgenticSchemaAnalyzer
+from ..defaults import DEFAULT_EVAL_SAMPLE_LIMIT, DEFAULT_EVAL_SCALE, DEFAULT_TIMEOUT_MS
 from .domain_loader import list_domains, load_domain_spec
 from .generator import PhysicalVariant, materialize_domain_variant
 from .scoring import score_against_domain, score_domain_range, score_mapping_style
+
+if TYPE_CHECKING:
+    from arango.database import StandardDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +37,14 @@ class EvalRunResult:
 
 
 def run_eval(
-    db,
+    db: StandardDatabase,
     *,
     analyzer: AgenticSchemaAnalyzer,
     domains: list[str] | None = None,
     variants: list[PhysicalVariant] | None = None,
-    sample_limit: int = 3,
-    timeout_ms: int = 60_000,
-    scale: int = 5,
+    sample_limit: int = DEFAULT_EVAL_SAMPLE_LIMIT,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    scale: int = DEFAULT_EVAL_SCALE,
 ) -> list[EvalRunResult]:
     """Run evaluation across domain packs and physical variants."""
     variants = variants or DEFAULT_VARIANTS
@@ -84,7 +88,8 @@ def run_eval(
 
             logger.info(
                 "%s / %s: ent_f1=%.2f rel_f1=%.2f dr_f1=%.2f map_rel_acc=%.2f conf=%.2f",
-                domain_name, variant.name,
+                domain_name,
+                variant.name,
                 score["entities"]["f1"],
                 score["relationships"]["f1"],
                 dr["f1"],
@@ -156,7 +161,11 @@ def compare_reports(current: str | Path, baseline: str | Path) -> str:
             ("ent_f1", entry["score"]["entities"]["f1"], prev["score"]["entities"]["f1"]),
             ("rel_f1", entry["score"]["relationships"]["f1"], prev["score"]["relationships"]["f1"]),
             ("dr_f1", entry["domain_range"]["f1"], prev["domain_range"]["f1"]),
-            ("map_acc", entry["mapping_style"]["relationships"]["accuracy"], prev["mapping_style"]["relationships"]["accuracy"]),
+            (
+                "map_acc",
+                entry["mapping_style"]["relationships"]["accuracy"],
+                prev["mapping_style"]["relationships"]["accuracy"],
+            ),
             ("conf", entry["confidence"], prev["confidence"]),
         ]
 
@@ -164,7 +173,9 @@ def compare_reports(current: str | Path, baseline: str | Path) -> str:
             delta = cur_val - base_val
             marker = "+" if delta > 0.005 else ("-" if delta < -0.005 else " ")
             lines.append(
-                f"{entry['domain']:28} {entry['variant']:22} {name:>10} {base_val:9.3f} {cur_val:9.3f} {marker}{abs(delta):7.3f}"
+                f"{entry['domain']:28} {entry['variant']:22} "
+                f"{name:>10} {base_val:9.3f} "
+                f"{cur_val:9.3f} {marker}{abs(delta):7.3f}"
             )
 
     return "\n".join(lines)
