@@ -54,4 +54,3 @@ def test_invalid_identifier_rejected():
     pm = PhysicalMapping(entities={"User": {"style": "COLLECTION", "collectionName": "users"}})
     with pytest.raises(ValueError):
         pm.aql_entity_match(variable="u; RETURN 1", entity_type="User")
-

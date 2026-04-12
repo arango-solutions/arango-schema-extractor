@@ -66,6 +66,7 @@ def create_provider(name: str, *, api_key: str) -> LLMProvider:
         raise SchemaAnalyzerError(f"Unknown llm_provider: {name}", code="INVALID_ARGUMENT")
 
     import importlib
+
     mod = importlib.import_module(entry["module"])
     cls = getattr(mod, entry["class"])
     return cls(api_key=api_key)

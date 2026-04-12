@@ -151,4 +151,3 @@ class PhysicalMapping:
             return {"edge_variable": edge_variable, "bind_vars": bind_vars, "query": query}
 
         raise SchemaAnalyzerError(f"Unsupported relationship mapping style: {style}", code="INVALID_MAPPING")
-

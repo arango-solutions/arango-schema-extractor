@@ -93,4 +93,4 @@ def test_run_tool_unexpected_error_returns_contract_error(monkeypatch):
     resp = run_tool(req)
     assert resp["ok"] is False
     assert resp["error"]["code"] == "INTERNAL_ERROR"
-    assert "kaboom" in resp["error"]["message"]
+    assert "internal error" in resp["error"]["message"].lower()

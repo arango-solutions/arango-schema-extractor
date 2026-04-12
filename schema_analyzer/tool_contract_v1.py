@@ -46,4 +46,3 @@ def validate_request_v1(request: dict[str, Any]) -> list[str]:
 
 def validate_response_v1(response: dict[str, Any]) -> list[str]:
     return [err.message for err in sorted(_response_validator.iter_errors(response), key=str)]
-

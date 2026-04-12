@@ -61,4 +61,3 @@ def test_baseline_uses_generic_with_type_for_edge_collections_with_relation_fiel
     assert "KNOWS" in rels
     assert out["physicalMapping"]["relationships"]["KNOWS"]["style"] == "GENERIC_WITH_TYPE"
     assert out["physicalMapping"]["relationships"]["KNOWS"]["collectionName"] == "edges"
-

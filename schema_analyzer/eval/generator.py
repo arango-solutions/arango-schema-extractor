@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import random
 import string
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from arango.database import StandardDatabase
 
 EntityStyle = Literal["COLLECTION", "GENERIC_WITH_TYPE"]
 RelStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
@@ -37,17 +41,15 @@ def _rand_id(prefix: str, n: int = 10) -> str:
     return prefix + "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(n))
 
 
-def _ensure_collection(db, name: str, *, edge: bool) -> Any:
+def _ensure_collection(db: StandardDatabase, name: str, *, edge: bool) -> Any:
     if db.has_collection(name):
         return db.collection(name)
     return db.create_collection(name, edge=edge)
 
 
 def _ensure_persistent_index(col, fields: list[str]) -> None:
-    try:
+    with contextlib.suppress(Exception):
         col.add_index({"type": "persistent", "fields": fields, "unique": False, "sparse": False})
-    except Exception:
-        pass
 
 
 def _insert_many(col, docs: list[dict[str, Any]]) -> None:
@@ -65,7 +67,7 @@ def _insert_many(col, docs: list[dict[str, Any]]) -> None:
 
 
 def materialize_domain_variant(
-    db,
+    db: StandardDatabase,
     domain_spec: dict[str, Any],
     variant: PhysicalVariant,
     *,
@@ -213,4 +215,3 @@ def materialize_domain_variant(
             created["graph_name"] = None
 
     return created
-

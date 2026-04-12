@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 # Shared integration-test helpers
 # ---------------------------------------------------------------------------
 
+
 def env(name: str, default: str | None = None) -> str | None:
     v = os.environ.get(name)
     return v if v is not None else default
@@ -56,4 +57,3 @@ def wait_for_arango(sys_db, timeout_s: float = 20.0):
             last_err = e
             time.sleep(0.5)
     raise RuntimeError(f"ArangoDB not ready after {timeout_s}s: {last_err}")
-

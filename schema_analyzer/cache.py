@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,17 +36,27 @@ class FilesystemCache(AnalysisCache):
         if not p.exists():
             return None
         try:
-            data = json.loads(p.read_text("utf-8"))
+            raw = json.loads(p.read_text("utf-8"))
         except Exception:
             logger.warning("Corrupt or unreadable cache entry at %s, treating as miss", p)
             return None
-
-        return data
+        cache_meta = raw.get("_cache", {})
+        generated_at = cache_meta.get("generated_at")
+        ttl = cache_meta.get("ttl_seconds")
+        if generated_at and ttl is not None:
+            try:
+                age = time.time() - generated_at
+                if age > ttl:
+                    logger.debug("Cache entry %s expired (age=%.0fs, ttl=%ds)", fingerprint, age, ttl)
+                    return None
+            except (TypeError, ValueError):
+                pass
+        return raw
 
     def set(self, fingerprint: str, value: dict[str, Any], *, ttl_seconds: int) -> None:
         p = self._path(fingerprint)
         payload = dict(value)
-        payload["_cache"] = {"ttl_seconds": int(ttl_seconds)}
+        payload["_cache"] = {"ttl_seconds": int(ttl_seconds), "generated_at": time.time()}
         try:
             p.write_text(stable_dumps(payload), "utf-8")
         except Exception:
@@ -59,4 +70,3 @@ def cache_from_config(cfg: dict[str, Any] | None) -> AnalysisCache | None:
         directory = cfg.get("directory") or DEFAULT_CACHE_DIR
         return FilesystemCache(Path(directory))
     return None
-

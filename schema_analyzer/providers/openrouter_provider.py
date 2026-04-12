@@ -29,20 +29,25 @@ class OpenRouterProvider:
         return headers
 
     def _payload(self, model: str, system: str, prompt: str) -> bytes:
-        return json.dumps({
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": LLM_TEMPERATURE,
-            "max_tokens": ANTHROPIC_MAX_TOKENS,
-        }).encode("utf-8")
+        return json.dumps(
+            {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": LLM_TEMPERATURE,
+                "max_tokens": ANTHROPIC_MAX_TOKENS,
+            }
+        ).encode("utf-8")
 
     def generate(self, *, model: str, system: str, prompt: str, timeout_ms: int) -> LLMResponse:
         url = f"{self.base_url}/chat/completions"
         req = urllib.request.Request(
-            url, data=self._payload(model, system, prompt), headers=self._headers(), method="POST",
+            url,
+            data=self._payload(model, system, prompt),
+            headers=self._headers(),
+            method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout_ms / 1000.0) as resp:
@@ -72,7 +77,7 @@ class OpenRouterProvider:
     async def agenerate(self, *, model: str, system: str, prompt: str, timeout_ms: int) -> LLMResponse:
         import asyncio
 
-        return await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: self.generate(model=model, system=system, prompt=prompt, timeout_ms=timeout_ms),
         )

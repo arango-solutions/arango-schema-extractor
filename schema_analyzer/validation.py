@@ -103,4 +103,3 @@ def validate_analysis_output(data: dict[str, Any]) -> list[str]:
     for err in sorted(_validator.iter_errors(data), key=str):
         errors.append(err.message)
     return errors
-

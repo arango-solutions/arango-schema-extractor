@@ -39,10 +39,7 @@ class ConceptualSchema:
         return None
 
     def has_relationship_type(self, rel_type: str) -> bool:
-        for r in self.relationships:
-            if isinstance(r, dict) and r.get("type") == rel_type:
-                return True
-        return False
+        return any(isinstance(r, dict) and r.get("type") == rel_type for r in self.relationships)
 
     def validate_pattern(self, pattern_ast: dict[str, Any]) -> dict[str, Any]:
         """
@@ -94,4 +91,3 @@ class ConceptualSchema:
                 warnings.append({"code": "MISSING_REL_TYPE", "message": "Relationship type not specified in pattern"})
 
         return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
-

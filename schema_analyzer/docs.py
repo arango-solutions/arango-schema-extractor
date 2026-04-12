@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .types import AnalysisResult
 
 
-def generate_schema_docs(analysis: Any) -> str:
+def generate_schema_docs(analysis: AnalysisResult | dict[str, Any]) -> str:
     """
     Generate human-readable Markdown documentation from an analysis result.
     Accepts either AnalysisResult (pydantic) or a plain dict with the same keys.
     """
-    if hasattr(analysis, "model_dump"):
-        data = analysis.model_dump()
-    else:
-        data = analysis
+    data = analysis.model_dump() if hasattr(analysis, "model_dump") else analysis
 
     cs = data.get("conceptual_schema") or data.get("conceptualSchema") or {}
     pm = data.get("physical_mapping") or data.get("physicalMapping") or {}
@@ -58,4 +58,3 @@ def generate_schema_docs(analysis: Any) -> str:
     lines.append(f"- **Relationship mappings**: {len(pm.get('relationships') or {})}")
 
     return "\n".join(lines) + "\n"
-

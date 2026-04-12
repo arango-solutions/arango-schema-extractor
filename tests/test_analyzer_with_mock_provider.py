@@ -60,4 +60,3 @@ def test_analyze_with_mock_provider_parses_json(monkeypatch):
     res = analyzer.analyze_physical_schema(FakeDB(), sample_limit_per_collection=0)
     assert res.metadata.confidence == 0.8
     assert res.metadata.review_required is False
-

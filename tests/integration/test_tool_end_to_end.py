@@ -68,4 +68,3 @@ def test_tool_snapshot_and_analyze_smoke():
     analysis = resp_analyze["result"]["analysis"]
     assert analysis["conceptualSchema"]["entities"], "should infer at least one entity"
     assert analysis["physicalMapping"]["entities"], "should produce entity mappings"
-

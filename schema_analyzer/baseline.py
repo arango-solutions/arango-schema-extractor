@@ -6,12 +6,14 @@ from .conceptual import ConceptualSchema
 from .mapping import PhysicalMapping
 from .utils import pascal_case
 
+PREFERRED_EDGE_TYPE_FIELDS: list[str] = ["relation", "relType", "type"]
+PREFERRED_DOC_TYPE_FIELDS: list[str] = ["type", "_type", "kind", "entityType", "label"]
+
 
 def _choose_type_field(col: dict[str, Any], *, is_edge: bool) -> str | None:
     """
     Pick the best type field from snapshot stats (deterministic).
     """
-    # snapshot.py emits "candidate_type_fields" and "sample_field_value_counts"
     candidates = col.get("candidate_type_fields") or []
     if not isinstance(candidates, list):
         candidates = []
@@ -19,7 +21,7 @@ def _choose_type_field(col: dict[str, Any], *, is_edge: bool) -> str | None:
     if not isinstance(value_counts, dict):
         value_counts = {}
 
-    preferred = ["relation", "relType", "type"] if is_edge else ["type", "_type", "kind", "entityType", "label"]
+    preferred = PREFERRED_EDGE_TYPE_FIELDS if is_edge else PREFERRED_DOC_TYPE_FIELDS
     ordered = [c for c in preferred if c in candidates] + [c for c in candidates if c not in preferred]
 
     def distinct_count(field: str) -> int:
@@ -140,4 +142,3 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
             pm.relationships[rel_type] = {"style": "DEDICATED_COLLECTION", "edgeCollectionName": collection_name}
 
     return {"conceptualSchema": cs.to_json(), "physicalMapping": pm.to_json()}
-

@@ -8,7 +8,7 @@ from typing import Any
 
 from .defaults import MAX_REPAIR_ATTEMPTS, MAX_RETRIES, RETRY_BASE_DELAY
 from .errors import SchemaAnalyzerError
-from .providers.base import LLMProvider, LLMResponse
+from .providers.base import AsyncLLMProvider, LLMProvider, LLMResponse
 from .utils import extract_first_json_object
 from .validation import validate_analysis_output
 
@@ -93,10 +93,13 @@ def _call_with_retry(
             if not _is_transient(e) or attempt >= max_retries:
                 raise
             last_exc = e
-            delay = base_delay * (2 ** attempt)
+            delay = base_delay * (2**attempt)
             logger.warning(
                 "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
-                attempt + 1, max_retries + 1, delay, e,
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                e,
             )
             time.sleep(delay)
     raise last_exc  # pragma: no cover
@@ -140,7 +143,7 @@ def run_generate_validate_repair(
 
 
 async def _async_call_with_retry(
-    provider,
+    provider: AsyncLLMProvider,
     *,
     model: str,
     system: str,
@@ -160,10 +163,13 @@ async def _async_call_with_retry(
             if not _is_transient(e) or attempt >= max_retries:
                 raise
             last_exc = e
-            delay = base_delay * (2 ** attempt)
+            delay = base_delay * (2**attempt)
             logger.warning(
                 "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
-                attempt + 1, max_retries + 1, delay, e,
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                e,
             )
             await asyncio.sleep(delay)
     raise last_exc  # pragma: no cover
@@ -171,7 +177,7 @@ async def _async_call_with_retry(
 
 async def async_generate_validate_repair(
     *,
-    provider,
+    provider: AsyncLLMProvider,
     model: str,
     system: str,
     prompt: str,
@@ -200,4 +206,3 @@ async def async_generate_validate_repair(
             return result
         repair_attempts += 1
         current_prompt = result
-

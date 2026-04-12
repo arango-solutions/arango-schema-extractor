@@ -48,4 +48,3 @@ def test_materialize_and_snapshot_domains(variant):
     analyzer = AgenticSchemaAnalyzer(llm_provider=None, api_key=None)
     analysis = analyzer.analyze_physical_schema(db, sample_limit_per_collection=1)
     assert analysis.metadata.review_required is True
-

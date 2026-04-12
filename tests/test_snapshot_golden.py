@@ -31,7 +31,9 @@ class FakeGraph:
 
 
 class FakeDB:
-    def __init__(self, *, collections: dict, graphs: list[dict], graph_props: dict[str, dict], samples: dict[str, list[dict]]):
+    def __init__(
+        self, *, collections: dict, graphs: list[dict], graph_props: dict[str, dict], samples: dict[str, list[dict]]
+    ):
         self._collections = collections
         self._graphs = graphs
         self._graph_props = graph_props
@@ -69,10 +71,18 @@ def test_snapshot_matches_graphrag_fixture():
 
     collections = {
         # Intentionally out-of-order insertion to validate deterministic sorting.
-        "mentions": FakeCollection(col_type=3, count=3_000_000, indexes=fx["collections"][3]["indexes"], properties={"type": 3}),
-        "entities": FakeCollection(col_type=2, count=500_000, indexes=fx["collections"][2]["indexes"], properties={"type": 2}),
-        "documents": FakeCollection(col_type=2, count=10_000, indexes=fx["collections"][1]["indexes"], properties={"type": 2}),
-        "chunks": FakeCollection(col_type=2, count=120_000, indexes=fx["collections"][0]["indexes"], properties={"type": 2}),
+        "mentions": FakeCollection(
+            col_type=3, count=3_000_000, indexes=fx["collections"][3]["indexes"], properties={"type": 3}
+        ),
+        "entities": FakeCollection(
+            col_type=2, count=500_000, indexes=fx["collections"][2]["indexes"], properties={"type": 2}
+        ),
+        "documents": FakeCollection(
+            col_type=2, count=10_000, indexes=fx["collections"][1]["indexes"], properties={"type": 2}
+        ),
+        "chunks": FakeCollection(
+            col_type=2, count=120_000, indexes=fx["collections"][0]["indexes"], properties={"type": 2}
+        ),
         "_system": FakeCollection(col_type=2, count=0, indexes=[], properties={"type": 2}),
     }
 
@@ -99,8 +109,12 @@ def test_snapshot_matches_high_cardinality_fixture():
     fx = _load_fixture("high_cardinality_snapshot.json")
 
     collections = {
-        "relationships": FakeCollection(col_type=3, count=250_000_000, indexes=fx["collections"][1]["indexes"], properties={"type": 3}),
-        "entities": FakeCollection(col_type=2, count=20_000_000, indexes=fx["collections"][0]["indexes"], properties={"type": 2}),
+        "relationships": FakeCollection(
+            col_type=3, count=250_000_000, indexes=fx["collections"][1]["indexes"], properties={"type": 3}
+        ),
+        "entities": FakeCollection(
+            col_type=2, count=20_000_000, indexes=fx["collections"][0]["indexes"], properties={"type": 2}
+        ),
     }
 
     graph_props = {
@@ -119,4 +133,3 @@ def test_snapshot_matches_high_cardinality_fixture():
     db = FakeDB(collections=collections, graphs=fx["graphs"], graph_props=graph_props, samples=samples)
     snap = snapshot_physical_schema(db, sample_limit_per_collection=1, include_samples_in_snapshot=False)
     assert snap == fx
-

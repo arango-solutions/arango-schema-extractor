@@ -24,4 +24,3 @@ def load_domain_spec(domain: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("domain spec must be an object")
     return data
-

@@ -1,14 +1,26 @@
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .types import AnalysisResult
 
 
 def _ttl_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _sanitize_iri_local(name: str) -> str:
+    """Sanitize a string for use as a Turtle IRI local name (PN_LOCAL)."""
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = "_" + sanitized
+    return sanitized or "_Unknown"
+
+
 def export_conceptual_model_as_owl_turtle(
-    analysis: Any,
+    analysis: AnalysisResult | dict[str, Any],
     *,
     base_iri: str = "http://arangodb.com/schema/hybrid#",
     phys_iri: str = "http://arangodb.com/schema/physical#",
@@ -20,10 +32,7 @@ def export_conceptual_model_as_owl_turtle(
     - SPARQL conceptual queries
     - physical mappings to guide translation to AQL
     """
-    if hasattr(analysis, "model_dump"):
-        data = analysis.model_dump()
-    else:
-        data = analysis
+    data = analysis.model_dump() if hasattr(analysis, "model_dump") else analysis
 
     cs = data.get("conceptual_schema") or data.get("conceptualSchema") or {}
     pm = data.get("physical_mapping") or data.get("physicalMapping") or {}
@@ -57,22 +66,21 @@ def export_conceptual_model_as_owl_turtle(
             name = e.get("name")
             if not isinstance(name, str) or not name:
                 continue
-            iri = f":{name}"
+            safe = _sanitize_iri_local(name)
+            iri = f":{safe}"
             lines.append(f"{iri} a owl:Class ;")
             lines.append(f'  rdfs:label "{_ttl_escape(name)}" .')
-            # Physical mapping annotations for entities
             mapping = (pm.get("entities") or {}).get(name) if isinstance(pm.get("entities"), dict) else None
             if isinstance(mapping, dict):
-                # Re-emit as additional triples
                 style = mapping.get("style")
                 if style:
-                    lines.append(f"{iri} phys:mappingStyle \"{_ttl_escape(str(style))}\" .")
+                    lines.append(f'{iri} phys:mappingStyle "{_ttl_escape(str(style))}" .')
                 if mapping.get("collectionName"):
-                    lines.append(f"{iri} phys:collectionName \"{_ttl_escape(str(mapping['collectionName']))}\" .")
+                    lines.append(f'{iri} phys:collectionName "{_ttl_escape(str(mapping["collectionName"]))}" .')
                 if mapping.get("typeField"):
-                    lines.append(f"{iri} phys:typeField \"{_ttl_escape(str(mapping['typeField']))}\" .")
+                    lines.append(f'{iri} phys:typeField "{_ttl_escape(str(mapping["typeField"]))}" .')
                 if mapping.get("typeValue"):
-                    lines.append(f"{iri} phys:typeValue \"{_ttl_escape(str(mapping['typeValue']))}\" .")
+                    lines.append(f'{iri} phys:typeValue "{_ttl_escape(str(mapping["typeValue"]))}" .')
             lines.append("")
 
     # Object properties (relationships)
@@ -85,30 +93,30 @@ def export_conceptual_model_as_owl_turtle(
                 continue
             from_e = r.get("fromEntity")
             to_e = r.get("toEntity")
-            iri = f":{rtype}"
+            safe_rtype = _sanitize_iri_local(rtype)
+            iri = f":{safe_rtype}"
             lines.append(f"{iri} a owl:ObjectProperty ;")
             lines.append(f'  rdfs:label "{_ttl_escape(rtype)}" ;')
             if isinstance(from_e, str) and from_e:
-                lines.append(f"  rdfs:domain :{from_e} ;")
+                lines.append(f"  rdfs:domain :{_sanitize_iri_local(from_e)} ;")
             if isinstance(to_e, str) and to_e:
-                lines.append(f"  rdfs:range :{to_e} ;")
+                lines.append(f"  rdfs:range :{_sanitize_iri_local(to_e)} ;")
             lines[-1] = lines[-1].rstrip(";") + " ." if lines[-1].endswith(";") else lines[-1]
 
-            # Physical mapping annotations for relationships
             mapping = (pm.get("relationships") or {}).get(rtype) if isinstance(pm.get("relationships"), dict) else None
             if isinstance(mapping, dict):
                 style = mapping.get("style")
                 if style:
-                    lines.append(f"{iri} phys:mappingStyle \"{_ttl_escape(str(style))}\" .")
+                    lines.append(f'{iri} phys:mappingStyle "{_ttl_escape(str(style))}" .')
                 if mapping.get("edgeCollectionName"):
-                    lines.append(f"{iri} phys:edgeCollectionName \"{_ttl_escape(str(mapping['edgeCollectionName']))}\" .")
+                    val = _ttl_escape(str(mapping["edgeCollectionName"]))
+                    lines.append(f'{iri} phys:edgeCollectionName "{val}" .')
                 if mapping.get("collectionName"):
-                    lines.append(f"{iri} phys:collectionName \"{_ttl_escape(str(mapping['collectionName']))}\" .")
+                    lines.append(f'{iri} phys:collectionName "{_ttl_escape(str(mapping["collectionName"]))}" .')
                 if mapping.get("typeField"):
-                    lines.append(f"{iri} phys:typeField \"{_ttl_escape(str(mapping['typeField']))}\" .")
+                    lines.append(f'{iri} phys:typeField "{_ttl_escape(str(mapping["typeField"]))}" .')
                 if mapping.get("typeValue"):
-                    lines.append(f"{iri} phys:typeValue \"{_ttl_escape(str(mapping['typeValue']))}\" .")
+                    lines.append(f'{iri} phys:typeValue "{_ttl_escape(str(mapping["typeValue"]))}" .')
             lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
-

@@ -10,6 +10,7 @@ from .base import LLMResponse
 def _import_openai():
     try:
         import openai  # type: ignore
+
         return openai
     except Exception as e:  # pragma: no cover
         raise SchemaAnalyzerError(
@@ -60,4 +61,3 @@ class OpenAIProvider:
 
         text = resp.choices[0].message.content or ""
         return LLMResponse(text=text, raw=resp)
-

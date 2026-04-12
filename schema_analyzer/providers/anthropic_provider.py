@@ -10,6 +10,7 @@ from .base import LLMResponse
 def _import_anthropic():
     try:
         import anthropic  # type: ignore
+
         return anthropic
     except Exception as e:  # pragma: no cover
         raise SchemaAnalyzerError(
@@ -67,4 +68,3 @@ class AnthropicProvider:
             raise SchemaAnalyzerError("Anthropic async request failed", code="PROVIDER_ERROR", cause=e) from e
 
         return LLMResponse(text=_extract_text(resp), raw=resp)
-

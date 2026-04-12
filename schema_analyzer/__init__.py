@@ -5,6 +5,7 @@ from .exports import export_mapping
 from .mapping import PhysicalMapping
 from .owl_export import export_conceptual_model_as_owl_turtle
 from .providers import list_providers, register_provider
+from .tool import run_tool
 
 __all__ = [
     "AgenticSchemaAnalyzer",
@@ -15,5 +16,5 @@ __all__ = [
     "export_conceptual_model_as_owl_turtle",
     "register_provider",
     "list_providers",
+    "run_tool",
 ]
-

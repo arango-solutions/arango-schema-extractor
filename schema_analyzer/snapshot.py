@@ -6,22 +6,22 @@ if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
 from .defaults import SAMPLE_VALUE_TOP_K
-from .utils import pascal_case, sha256_hex, stable_dumps
+from .utils import pascal_case, sha256_hex, singularize, stable_dumps
 
-
-def _singularize(name: str) -> str:
-    n = name.strip()
-    if n.endswith("ies") and len(n) > 3:
-        return n[:-3] + "y"
-    if n.endswith("sses") and len(n) > 4:
-        return n[:-2]  # addresses -> address-like (best-effort)
-    if n.endswith("s") and not n.endswith("ss") and len(n) > 1:
-        return n[:-1]
-    return n
+CANDIDATE_TYPE_KEYS: list[str] = [
+    "type",
+    "_type",
+    "label",
+    "labels",
+    "kind",
+    "entityType",
+    "relation",
+    "relType",
+]
 
 
 def infer_entity_type_from_collection_name(collection_name: str) -> str:
-    return pascal_case(_singularize(collection_name))
+    return pascal_case(singularize(collection_name))
 
 
 def infer_relationship_type_from_collection_name(collection_name: str) -> str:
@@ -33,8 +33,8 @@ def infer_relationship_type_from_collection_name(collection_name: str) -> str:
 def _detect_candidate_type_fields(sample: dict[str, Any]) -> list[str]:
     if not isinstance(sample, dict):
         return []
-    common = ["type", "_type", "label", "labels", "kind", "entityType", "relation", "relType"]
-    return [k for k in common if k in sample]
+    return [k for k in CANDIDATE_TYPE_KEYS if k in sample]
+
 
 def _iter_scalar_values(v: Any):
     # Yield scalar/string-ish values from a field.
@@ -76,6 +76,7 @@ def fingerprint_physical_schema(snapshot: dict[str, Any], *, include_samples: bo
     if not include_samples:
         data = _omit_samples(data)
     return sha256_hex(stable_dumps(data))
+
 
 def _normalize_index(idx: Any) -> dict[str, Any]:
     if not isinstance(idx, dict):
@@ -272,4 +273,3 @@ def snapshot_physical_schema(
         snapshot["graphs_error"] = str(e)
 
     return snapshot
-

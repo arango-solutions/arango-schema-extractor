@@ -12,4 +12,3 @@ __all__ = [
     "save_eval_report",
     "compare_reports",
 ]
-
