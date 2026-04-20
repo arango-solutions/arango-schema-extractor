@@ -15,6 +15,10 @@ dist/
 venv/
 env/
 
+# Build / packaging
+dist/
+wheels/
+
 # Test / tooling
 .pytest_cache/
 .mypy_cache/

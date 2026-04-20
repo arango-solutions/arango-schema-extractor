@@ -4,8 +4,44 @@ version = "0.2.0"
 description = "Agentic schema analyzer for ArangoDB: conceptual model + conceptual-to-physical mapping for transpilers."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
-authors = []
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Arthur Keen" },
+]
+maintainers = [
+  { name = "Arthur Keen" },
+]
+keywords = [
+  "arangodb",
+  "schema",
+  "graph",
+  "conceptual-model",
+  "ontology",
+  "transpiler",
+  "cypher",
+  "sparql",
+  "owl",
+  "llm",
+  "mcp",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
 dependencies = [
   "python-arango>=8.1.1",
   "pydantic>=2.6.0",
@@ -25,8 +61,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = ""
-Repository = ""
+Homepage = "https://github.com/ArthurKeen/arango-schema-mapper"
+Repository = "https://github.com/ArthurKeen/arango-schema-mapper"
+Issues = "https://github.com/ArthurKeen/arango-schema-mapper/issues"
+Changelog = "https://github.com/ArthurKeen/arango-schema-mapper/blob/main/CHANGELOG.md"
 
 [project.scripts]
 arangodb-schema-analyzer = "schema_analyzer.cli:main"
@@ -61,3 +99,15 @@ ignore_missing_imports = true
 [tool.hatch.build.targets.wheel]
 packages = ["schema_analyzer"]
 
+[tool.hatch.build.targets.sdist]
+# Strict allow-list: only these paths go into the sdist.
+only-include = [
+  "schema_analyzer",
+  "docs/tool-contract",
+  "README.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "LICENSE",
+  "pyproject.toml",
+]
