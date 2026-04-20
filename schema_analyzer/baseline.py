@@ -100,6 +100,11 @@ def _build_index_lookup(col: dict[str, Any]) -> dict[str, dict[str, Any]]:
     For compound indexes, only the first field gets the "indexed" flag since
     ArangoDB persistent indexes are prefix-usable.  All participating fields
     get listed in the compound entry.
+
+    Vertex-centric indexes (VCI) are excluded: they are edge-traversal
+    indexes keyed on ``_from``/``_to`` plus an edge property, not
+    property-scan indexes, so they must not flip ``indexed=True`` on a
+    conceptual property.
     """
     lookup: dict[str, dict[str, Any]] = {}
     for idx in col.get("indexes") or []:
@@ -107,6 +112,8 @@ def _build_index_lookup(col: dict[str, Any]) -> dict[str, dict[str, Any]]:
             continue
         idx_type = idx.get("type", "")
         if idx_type == "primary":
+            continue
+        if idx.get("vci") or idx_type in _VCI_INDEX_TYPES:
             continue
         fields = idx.get("fields")
         if not isinstance(fields, list) or not fields:
@@ -163,10 +170,31 @@ def _extract_properties(
     return props
 
 
+_VCI_INDEX_TYPES: frozenset[str] = frozenset({"vci", "vertex_centric_index"})
+
+
 def _extract_indexes_for_mapping(col: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Extract the list of non-primary indexes from a collection entry for
     inclusion in the physical mapping.
+
+    In addition to the core shape (type, fields, unique, sparse, name) the
+    exporter propagates three flags that downstream transpilers need but
+    that the raw python-arango response carries unobtrusively:
+
+      - ``vci`` — vertex-centric index marker. Surfaced when either the
+        ``vci`` boolean is truthy on the index dict or the index type is
+        one of the known VCI aliases. Edge traversal planners need this to
+        emit correct ``OPTIONS.indexHint`` clauses in AQL ``FOR ... IN
+        OUTBOUND/INBOUND`` statements.
+
+      - ``deduplicate`` — emitted only when explicitly ``False`` on an
+        array index. The default is ``True`` on ArangoDB array indexes so
+        the absence of the key signals the default; explicit ``False`` is
+        the signal to wrap a scan in ``DISTINCT`` to avoid duplicate rows.
+
+      - ``storedValues`` — when present and non-empty, lets projection
+        planners read columns from the index without a document fetch.
     """
     result: list[dict[str, Any]] = []
     for idx in col.get("indexes") or []:
@@ -186,6 +214,15 @@ def _extract_indexes_for_mapping(col: dict[str, Any]) -> list[dict[str, Any]]:
         name = idx.get("name")
         if isinstance(name, str) and name:
             entry["name"] = name
+        if idx.get("vci") or idx_type in _VCI_INDEX_TYPES:
+            entry["vci"] = True
+        if idx.get("deduplicate") is False:
+            entry["deduplicate"] = False
+        stored_values = idx.get("storedValues")
+        if isinstance(stored_values, list) and stored_values:
+            filtered = [str(f) for f in stored_values if isinstance(f, str) and f]
+            if filtered:
+                entry["storedValues"] = filtered
         result.append(entry)
     return result
 

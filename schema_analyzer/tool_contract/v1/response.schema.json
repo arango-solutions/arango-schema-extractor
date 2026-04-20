@@ -116,7 +116,10 @@
                         "fields": { "type": "array", "items": { "type": "string" } },
                         "unique": { "type": "boolean" },
                         "sparse": { "type": "boolean" },
-                        "name": { "type": "string" }
+                        "name": { "type": "string" },
+                        "vci": { "type": "boolean" },
+                        "deduplicate": { "type": "boolean" },
+                        "storedValues": { "type": "array", "items": { "type": "string" } }
                       }
                     }
                   },
@@ -156,7 +159,10 @@
                         "fields": { "type": "array", "items": { "type": "string" } },
                         "unique": { "type": "boolean" },
                         "sparse": { "type": "boolean" },
-                        "name": { "type": "string" }
+                        "name": { "type": "string" },
+                        "vci": { "type": "boolean" },
+                        "deduplicate": { "type": "boolean" },
+                        "storedValues": { "type": "array", "items": { "type": "string" } }
                       }
                     }
                   },
