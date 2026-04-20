@@ -34,6 +34,18 @@ DEFAULT_CACHE_DIR: str = ".schema-analyzer-cache"
 # Baseline inference
 BASELINE_NO_LLM_CONFIDENCE: float = 0.1
 MIN_TYPE_FIELD_DISTINCT_VALUES: int = 2
+# Fields with more distinct values than this are rejected as discriminators
+# (they are almost always ID-like, not type labels).
+MAX_TYPE_FIELD_DISTINCT_VALUES: int = 32
+# Minimum fraction of documents whose values fall within the observed top-K
+# distinct values for the field to count as a genuine discriminator.
+MIN_TYPE_FIELD_COVERAGE_FRACTION: float = 0.80
+# Discriminator values must be strings of at most this length and match the
+# pattern [A-Za-z0-9_-]+. Longer values look like content, not type labels.
+MAX_TYPE_VALUE_LENGTH: int = 64
+# Cap on the number of non-allow-listed candidate fields probed per collection
+# during snapshot COLLECT-based discriminator detection, to bound AQL cost.
+MAX_BROADENED_TYPE_CANDIDATES: int = 10
 UNRESOLVED_ENDPOINT: str = "Any"
 
 # Eval harness
