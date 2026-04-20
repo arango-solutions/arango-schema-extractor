@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- **#7 cheap schema-change probes.** Two new top-level helpers in
+  `schema_analyzer.snapshot` (re-exported from the package root):
+  - `fingerprint_physical_shape(db, *, exclude_collections=None)` — hashes
+    only the user-collection set, per-collection type (document vs edge),
+    and per-collection sorted index digests (`type`, `fields`, `unique`,
+    `sparse`, `vci`, `deduplicate`). Auto-generated index `name` / `id`
+    are excluded so restarts and rebuilds don't produce false positives.
+    Stable under ordinary INSERT / UPDATE / REMOVE writes.
+  - `fingerprint_physical_counts(db, *, exclude_collections=None)` —
+    shape fingerprint combined with `col.count()` per included
+    collection; changes whenever the shape or any row count changes.
+  Both probes read only python-arango primitives (`db.collections()`,
+  `col.indexes()`, `col.count()`) — no AQL, no samples, no analyzer
+  logic — so consumers can answer "has it changed?" in a few dozen
+  milliseconds instead of running the full `snapshot_physical_schema`.
+  Collection-level failures degrade gracefully (sentinel contribution)
+  rather than raising. `exclude_collections` lets callers using a
+  database-resident cache self-exclude their bookkeeping collection.
+
+### Documentation
+
+- **#8 PRD §3.13.3 / §4.1 update.** The PRD now sanctions the two-
+  fingerprint model (shape vs counts), a four-state change-status
+  contract (`unchanged` / `stats_changed` / `shape_changed` /
+  `no_cache`), stats-only refresh as the product behavior for
+  `stats_changed`, storage-agnostic caching, and self-exclusion of
+  database-resident cache collections from the shape fingerprint.
+
 ## 0.2.0
 
 Quality + contract release. The analyzer now carries a per-relationship
