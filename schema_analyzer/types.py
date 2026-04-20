@@ -32,6 +32,8 @@ class AnalysisMetadata(BaseModel):
     physical_schema_fingerprint: str | None = Field(default=None, alias="physicalSchemaFingerprint")
     cache_hit: bool = Field(default=False, alias="cacheHit")
     prompt_version: str | None = Field(default=None, alias="promptVersion")
+    detected_domain: str | None = Field(default=None, alias="detectedDomain")
+    detected_domain_confidence: float | None = Field(default=None, alias="detectedDomainConfidence")
 
 
 class AnalysisResult(BaseModel):

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
+from .domain_detect import DomainHint, detect_domain
 from .defaults import (
     CONFIDENCE_BASE,
     CONFIDENCE_FLOOR,
@@ -60,11 +61,22 @@ def _default_system_prompt() -> str:
     )
 
 
-def _build_prompt(snapshot: dict[str, Any]) -> str:
+def _build_prompt(snapshot: dict[str, Any], *, domain_hint: DomainHint | None = None) -> str:
     snapshot_json = stable_dumps(snapshot)
+
+    domain_block = ""
+    if domain_hint:
+        domain_block = (
+            "BUSINESS DOMAIN CONTEXT (auto-detected from schema signals):\n"
+            f"{domain_hint.prompt_context()}\n"
+            "Use this domain knowledge to choose semantically accurate entity and "
+            "relationship names. Prefer domain-standard terminology over generic names.\n\n"
+        )
+
     return (
         "You will be given an ArangoDB physical schema snapshot JSON.\n"
         "Your job: infer a conceptual schema and a conceptual→physical mapping.\n\n"
+        + domain_block +
         "Return ONLY a single JSON object with EXACTLY these top-level keys:\n"
         "- conceptualSchema\n"
         "- physicalMapping\n"
@@ -73,14 +85,17 @@ def _build_prompt(snapshot: dict[str, Any]) -> str:
         "{\n"
         '  "conceptualSchema": {\n'
         '    "entities": [{"name":"EntityType","labels":["EntityType"],'
-        '"properties":[{"name":"prop"}]}],\n'
+        '"properties":[{"name":"prop","type":"string","indexed":true,"unique":false}]}],\n'
         '    "relationships": [{"type":"REL_TYPE","fromEntity":"EntityType",'
-        '"toEntity":"EntityType","properties":[{"name":"prop"}]}],\n'
+        '"toEntity":"EntityType","properties":[{"name":"prop","type":"string"}]}],\n'
         '    "properties": []\n'
         "  },\n"
         '  "physicalMapping": {\n'
-        '    "entities": {"EntityType":{"style":"COLLECTION","collectionName":"collection"}},\n'
-        '    "relationships": {"REL_TYPE":{"style":"DEDICATED_COLLECTION","edgeCollectionName":"edges"}}\n'
+        '    "entities": {"EntityType":{"style":"COLLECTION","collectionName":"collection",'
+        '"indexes":[{"type":"persistent","fields":["prop"],"unique":false}],'
+        '"properties":{"prop":{"physicalFieldName":"prop","indexed":true}}}},\n'
+        '    "relationships": {"REL_TYPE":{"style":"DEDICATED_COLLECTION","edgeCollectionName":"edges",'
+        '"indexes":[],"properties":{}}}\n'
         "  },\n"
         '  "metadata": {\n'
         '    "confidence": 0.0,\n'
@@ -122,6 +137,14 @@ def _build_prompt(snapshot: dict[str, Any]) -> str:
         "- For those, add conceptualSchema.entities entries and "
         "physicalMapping.entities entries mapping to LABEL with "
         "typeField/typeValue.\n\n"
+        "Property and index mapping rule:\n"
+        "- For EACH entity/relationship in physicalMapping, include:\n"
+        "  - 'indexes': array of non-primary indexes from the snapshot "
+        "(type, fields, unique, sparse, name).\n"
+        "  - 'properties': object mapping conceptual property name → "
+        "{'physicalFieldName': str, 'indexed': bool, 'unique': bool}.\n"
+        "- In conceptualSchema entity/relationship properties, include "
+        "'indexed': true and 'unique': true when the field is indexed.\n\n"
         f"PHYSICAL_SCHEMA_SNAPSHOT_JSON:\n{snapshot_json}\n"
     )
 
@@ -150,6 +173,7 @@ class _AnalysisContext(NamedTuple):
     system: str
     prompt: str
     max_repair_attempts: int
+    domain_hint: DomainHint | None = None
 
 
 @dataclass(frozen=True)
@@ -248,6 +272,10 @@ class AgenticSchemaAnalyzer:
                     metadata=stamped,
                 )
 
+        domain_hint = detect_domain(snapshot)
+        if domain_hint:
+            logger.info("Detected domain=%s (confidence=%.2f)", domain_hint.domain, domain_hint.confidence)
+
         if not use_llm:
             logger.info("No LLM provider configured; falling back to baseline inference")
             doc_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "document")
@@ -257,7 +285,7 @@ class AgenticSchemaAnalyzer:
                 confidence=0.1,
                 timestamp=now_iso(),
                 analyzed_collection_counts={"documentCollections": doc_count, "edgeCollections": edge_count},
-                detected_patterns=[],
+                detected_patterns=baseline.get("detectedPatterns", []),
                 warnings=["LLM provider not configured; returning deterministic baseline inference"],
                 assumptions=[],
                 review_required=True,
@@ -265,6 +293,8 @@ class AgenticSchemaAnalyzer:
                 model=None,
                 repair_attempts=0,
                 used_baseline=True,
+                detected_domain=domain_hint.domain if domain_hint else None,
+                detected_domain_confidence=domain_hint.confidence if domain_hint else None,
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
@@ -287,7 +317,7 @@ class AgenticSchemaAnalyzer:
         elapsed_ms = int((time.time() - started) * 1000)
         remaining = max(MIN_LLM_BUDGET_MS, timeout_ms - elapsed_ms)
 
-        prompt = _build_prompt(snapshot)
+        prompt = _build_prompt(snapshot, domain_hint=domain_hint)
 
         return _AnalysisContext(
             snapshot=snapshot,
@@ -299,6 +329,7 @@ class AgenticSchemaAnalyzer:
             system=system_effective,
             prompt=prompt,
             max_repair_attempts=self._repair_limit(),
+            domain_hint=domain_hint,
         )
 
     def analyze_physical_schema(
@@ -343,7 +374,10 @@ class AgenticSchemaAnalyzer:
             data = {
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
                 "physicalMapping": baseline.get("physicalMapping", {}),
-                "metadata": {"warnings": [str(e)]},
+                "metadata": {
+                    "warnings": [str(e)],
+                    "detectedPatterns": baseline.get("detectedPatterns", []),
+                },
             }
             warnings.append("LLM workflow failed; returning deterministic baseline inference")
             errors.append(str(e))
@@ -360,6 +394,7 @@ class AgenticSchemaAnalyzer:
             cache_storage_key=prep.cache_storage_key,
             use_cache=use_cache,
             prov=prov,
+            domain_hint=prep.domain_hint,
         )
 
     async def analyze_physical_schema_async(
@@ -405,7 +440,10 @@ class AgenticSchemaAnalyzer:
             data = {
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
                 "physicalMapping": baseline.get("physicalMapping", {}),
-                "metadata": {"warnings": [str(e)]},
+                "metadata": {
+                    "warnings": [str(e)],
+                    "detectedPatterns": baseline.get("detectedPatterns", []),
+                },
             }
             warnings.append("LLM workflow failed; returning deterministic baseline inference")
             errors.append(str(e))
@@ -422,6 +460,7 @@ class AgenticSchemaAnalyzer:
             cache_storage_key=prep.cache_storage_key,
             use_cache=use_cache,
             prov=prov,
+            domain_hint=prep.domain_hint,
         )
 
     def _build_result(
@@ -437,6 +476,7 @@ class AgenticSchemaAnalyzer:
         cache_storage_key: str,
         use_cache: bool,
         prov: _ProvenanceStamp,
+        domain_hint: DomainHint | None = None,
     ) -> AnalysisResult:
         doc_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "document")
         edge_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "edge")
@@ -465,6 +505,8 @@ class AgenticSchemaAnalyzer:
             model=model,
             repair_attempts=int(repair_attempts),
             used_baseline=bool(errors),
+            detected_domain=domain_hint.domain if domain_hint else None,
+            detected_domain_confidence=domain_hint.confidence if domain_hint else None,
         )
         metadata = self._stamp_metadata(metadata, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
 
