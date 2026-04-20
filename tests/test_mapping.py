@@ -39,7 +39,7 @@ def test_aql_relationship_traversal_generic_with_type():
         relationships={
             "AUTHORED": {
                 "style": "GENERIC_WITH_TYPE",
-                "collectionName": "relationships",
+                "edgeCollectionName": "relationships",
                 "typeField": "relation",
                 "typeValue": "authored",
             }

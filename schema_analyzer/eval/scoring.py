@@ -159,7 +159,7 @@ def expected_mapping_from_domain(domain_spec: dict[str, Any], variant: Any) -> d
             if isinstance(rt, str) and rt:
                 expected_rels[rt] = {
                     "style": "GENERIC_WITH_TYPE",
-                    "collectionName": col,
+                    "edgeCollectionName": col,
                     "typeField": tf,
                     "typeValue": rt,
                 }
@@ -201,7 +201,7 @@ def score_mapping_style(domain_spec: dict[str, Any], physical_mapping: dict[str,
         if exp["style"] == "DEDICATED_COLLECTION":
             return got.get("edgeCollectionName") == exp.get("edgeCollectionName")
         return (
-            got.get("collectionName") == exp.get("collectionName")
+            got.get("edgeCollectionName") == exp.get("edgeCollectionName")
             and got.get("typeField") == exp.get("typeField")
             and str(got.get("typeValue")) == str(exp.get("typeValue"))
         )

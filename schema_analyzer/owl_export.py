@@ -111,8 +111,6 @@ def export_conceptual_model_as_owl_turtle(
                 if mapping.get("edgeCollectionName"):
                     val = _ttl_escape(str(mapping["edgeCollectionName"]))
                     lines.append(f'{iri} phys:edgeCollectionName "{val}" .')
-                if mapping.get("collectionName"):
-                    lines.append(f'{iri} phys:collectionName "{_ttl_escape(str(mapping["collectionName"]))}" .')
                 if mapping.get("typeField"):
                     lines.append(f'{iri} phys:typeField "{_ttl_escape(str(mapping["typeField"]))}" .')
                 if mapping.get("typeValue"):

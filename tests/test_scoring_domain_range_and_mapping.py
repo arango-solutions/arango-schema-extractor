@@ -60,7 +60,7 @@ def test_mapping_style_scoring_generic_generic():
         "relationships": {
             "FOLLOWS": {
                 "style": "GENERIC_WITH_TYPE",
-                "collectionName": "relationships",
+                "edgeCollectionName": "relationships",
                 "typeField": "relation",
                 "typeValue": "FOLLOWS",
             }

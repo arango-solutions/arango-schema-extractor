@@ -201,7 +201,7 @@ class TestLPGBaseline:
         pm = lpg_baseline["physicalMapping"]
         for rel_type in EXPECTED_RELATIONSHIPS:
             assert pm["relationships"][rel_type]["style"] == "GENERIC_WITH_TYPE"
-            assert pm["relationships"][rel_type]["collectionName"] == "edges"
+            assert pm["relationships"][rel_type]["edgeCollectionName"] == "edges"
             assert pm["relationships"][rel_type]["typeField"] == "relation"
             assert pm["relationships"][rel_type]["typeValue"] == rel_type
 
@@ -254,7 +254,7 @@ class TestHybridBaseline:
         pm = hybrid_baseline["physicalMapping"]
         for rel_type in EXPECTED_RELATIONSHIPS:
             assert pm["relationships"][rel_type]["style"] == "GENERIC_WITH_TYPE"
-            assert pm["relationships"][rel_type]["collectionName"] == "edges"
+            assert pm["relationships"][rel_type]["edgeCollectionName"] == "edges"
             assert pm["relationships"][rel_type]["typeField"] == "relation"
             assert pm["relationships"][rel_type]["typeValue"] == rel_type
 

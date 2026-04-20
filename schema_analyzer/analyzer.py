@@ -98,7 +98,7 @@ def _build_prompt(snapshot: dict[str, Any], *, domain_hint: DomainHint | None = 
         '  "physicalMapping": {\n'
         '    "entities": {"EntityType":{"style":"COLLECTION","collectionName":"collection",'
         '"indexes":[{"type":"persistent","fields":["prop"],"unique":false}],'
-        '"properties":{"prop":{"physicalFieldName":"prop","indexed":true}}}},\n'
+        '"properties":{"prop":{"field":"prop","indexed":true}}}},\n'
         '    "relationships": {"REL_TYPE":{"style":"DEDICATED_COLLECTION","edgeCollectionName":"edges",'
         '"indexes":[],"properties":{}}}\n'
         "  },\n"
@@ -147,7 +147,7 @@ def _build_prompt(snapshot: dict[str, Any], *, domain_hint: DomainHint | None = 
         "  - 'indexes': array of non-primary indexes from the snapshot "
         "(type, fields, unique, sparse, name).\n"
         "  - 'properties': object mapping conceptual property name → "
-        "{'physicalFieldName': str, 'indexed': bool, 'unique': bool}.\n"
+        "{'field': str, 'indexed': bool, 'unique': bool}.\n"
         "- In conceptualSchema entity/relationship properties, include "
         "'indexed': true and 'unique': true when the field is indexed.\n\n"
         f"PHYSICAL_SCHEMA_SNAPSHOT_JSON:\n{snapshot_json}\n"

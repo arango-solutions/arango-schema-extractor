@@ -129,12 +129,12 @@ class PhysicalMapping:
             return {"edge_variable": edge_variable, "bind_vars": bind_vars, "query": query}
 
         if style == "GENERIC_WITH_TYPE":
-            edge_collection_name = mapping.get("collectionName")
+            edge_collection_name = mapping.get("edgeCollectionName")
             type_field = mapping.get("typeField")
             type_value = mapping.get("typeValue")
             if not (edge_collection_name and type_field and type_value):
                 raise SchemaAnalyzerError(
-                    f"GENERIC_WITH_TYPE mapping requires collectionName, typeField, typeValue for: {rel_type}",
+                    f"GENERIC_WITH_TYPE mapping requires edgeCollectionName, typeField, typeValue for: {rel_type}",
                     code="INVALID_MAPPING",
                 )
             bind_vars["@edgeCollection"] = edge_collection_name

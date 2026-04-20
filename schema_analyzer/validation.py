@@ -79,9 +79,9 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                                 "type": "object",
                                 "additionalProperties": {
                                     "type": "object",
-                                    "required": ["physicalFieldName"],
+                                    "required": ["field"],
                                     "properties": {
-                                        "physicalFieldName": {"type": "string"},
+                                        "field": {"type": "string"},
                                         "indexed": {"type": "boolean"},
                                         "unique": {"type": "boolean"},
                                     },
@@ -95,10 +95,10 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                     "additionalProperties": {
                         "type": "object",
                         "required": ["style"],
+                        "not": {"required": ["collectionName"]},
                         "properties": {
                             "style": {"type": "string", "enum": ["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]},
                             "edgeCollectionName": {"type": "string"},
-                            "collectionName": {"type": "string"},
                             "typeField": {"type": "string"},
                             "typeValue": {"type": "string"},
                             "indexes": {
@@ -122,9 +122,9 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                                 "type": "object",
                                 "additionalProperties": {
                                     "type": "object",
-                                    "required": ["physicalFieldName"],
+                                    "required": ["field"],
                                     "properties": {
-                                        "physicalFieldName": {"type": "string"},
+                                        "field": {"type": "string"},
                                         "indexed": {"type": "boolean"},
                                         "unique": {"type": "boolean"},
                                     },

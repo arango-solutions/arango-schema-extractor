@@ -138,7 +138,7 @@ class TestBuildPropertyMapping:
         ]
         mapping = _build_property_mapping(props)
         assert "title" in mapping
-        assert mapping["title"]["physicalFieldName"] == "title"
+        assert mapping["title"]["field"] == "title"
         assert "indexed" not in mapping["title"]
         assert mapping["released"]["indexed"] is True
 
@@ -183,7 +183,7 @@ class TestBaselineIndexMapping:
         assert idx_names == {"idx_title", "idx_released"}
 
         assert "properties" in movie_mapping
-        assert movie_mapping["properties"]["title"]["physicalFieldName"] == "title"
+        assert movie_mapping["properties"]["title"]["field"] == "title"
         assert movie_mapping["properties"]["title"]["indexed"] is True
         assert "indexed" not in movie_mapping["properties"]["tagline"]
 
@@ -266,7 +266,7 @@ class TestBaselineIndexMapping:
         assert movie_mapping["indexes"][0]["name"] == "idx_name"
         assert "properties" in movie_mapping
         assert "title" in movie_mapping["properties"]
-        assert movie_mapping["properties"]["title"]["physicalFieldName"] == "title"
+        assert movie_mapping["properties"]["title"]["field"] == "title"
 
         person_mapping = result["physicalMapping"]["entities"]["Person"]
         assert "name" in person_mapping["properties"]

@@ -61,7 +61,7 @@ def test_baseline_uses_generic_with_type_for_edge_collections_with_relation_fiel
     rels = {r["type"] for r in out["conceptualSchema"]["relationships"]}
     assert "KNOWS" in rels
     assert out["physicalMapping"]["relationships"]["KNOWS"]["style"] == "GENERIC_WITH_TYPE"
-    assert out["physicalMapping"]["relationships"]["KNOWS"]["collectionName"] == "edges"
+    assert out["physicalMapping"]["relationships"]["KNOWS"]["edgeCollectionName"] == "edges"
 
 
 # ── Singularization ────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ def test_lpg_baseline_physical_mapping_uses_generic_with_type():
     pm = out["physicalMapping"]
     for rel_type in ["ACTED_IN", "DIRECTED", "FOLLOWS", "PRODUCED", "REVIEWED", "WROTE"]:
         assert pm["relationships"][rel_type]["style"] == "GENERIC_WITH_TYPE"
-        assert pm["relationships"][rel_type]["collectionName"] == "edges"
+        assert pm["relationships"][rel_type]["edgeCollectionName"] == "edges"
         assert pm["relationships"][rel_type]["typeField"] == "relation"
         assert pm["relationships"][rel_type]["typeValue"] == rel_type
 
@@ -484,7 +484,7 @@ def test_hybrid_physical_mapping_mixes_styles():
     assert pm["entities"]["Person"]["style"] == "COLLECTION"
     for rel in ["ACTED_IN", "DIRECTED", "FOLLOWS", "PRODUCED", "REVIEWED", "WROTE"]:
         assert pm["relationships"][rel]["style"] == "GENERIC_WITH_TYPE"
-        assert pm["relationships"][rel]["collectionName"] == "edges"
+        assert pm["relationships"][rel]["edgeCollectionName"] == "edges"
 
 
 def test_all_three_styles_produce_same_ontology():
@@ -562,7 +562,7 @@ def test_single_value_edge_discriminator_physical_mapping():
     pm_rels = out["physicalMapping"]["relationships"]
     assert "FOLLOWS" in pm_rels
     assert pm_rels["FOLLOWS"]["style"] == "GENERIC_WITH_TYPE"
-    assert pm_rels["FOLLOWS"]["collectionName"] == "edges"
+    assert pm_rels["FOLLOWS"]["edgeCollectionName"] == "edges"
     assert pm_rels["FOLLOWS"]["typeField"] == "type"
     assert pm_rels["FOLLOWS"]["typeValue"] == "FOLLOWS"
 

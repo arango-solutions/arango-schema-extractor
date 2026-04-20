@@ -241,7 +241,7 @@ def _build_property_mapping(props: list[dict[str, Any]]) -> dict[str, dict[str, 
         name = p.get("name")
         if not isinstance(name, str) or not name:
             continue
-        entry: dict[str, Any] = {"physicalFieldName": name}
+        entry: dict[str, Any] = {"field": name}
         if p.get("indexed"):
             entry["indexed"] = True
         if p.get("unique"):
@@ -359,7 +359,7 @@ def infer_baseline_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
                 )
                 rel_mapping: dict[str, Any] = {
                     "style": "GENERIC_WITH_TYPE",
-                    "collectionName": collection_name,
+                    "edgeCollectionName": collection_name,
                     "typeField": type_field,
                     "typeValue": raw,
                 }

@@ -127,9 +127,9 @@
                     "type": "object",
                     "additionalProperties": {
                       "type": "object",
-                      "required": ["physicalFieldName"],
+                      "required": ["field"],
                       "properties": {
-                        "physicalFieldName": { "type": "string" },
+                        "field": { "type": "string" },
                         "indexed": { "type": "boolean" },
                         "unique": { "type": "boolean" }
                       }
@@ -143,10 +143,10 @@
               "additionalProperties": {
                 "type": "object",
                 "required": ["style"],
+                "not": { "required": ["collectionName"] },
                 "properties": {
                   "style": { "type": "string", "enum": ["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"] },
                   "edgeCollectionName": { "type": "string" },
-                  "collectionName": { "type": "string" },
                   "typeField": { "type": "string" },
                   "typeValue": { "type": "string" },
                   "indexes": {
@@ -170,9 +170,9 @@
                     "type": "object",
                     "additionalProperties": {
                       "type": "object",
-                      "required": ["physicalFieldName"],
+                      "required": ["field"],
                       "properties": {
-                        "physicalFieldName": { "type": "string" },
+                        "field": { "type": "string" },
                         "indexed": { "type": "boolean" },
                         "unique": { "type": "boolean" }
                       }
