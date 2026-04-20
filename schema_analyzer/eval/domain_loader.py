@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 _ROOT = Path(__file__).resolve().parents[2]  # repo root (schema_analyzer/..)
 _DOMAINS_DIR = _ROOT / "domains"
 
@@ -25,4 +24,3 @@ def load_domain_spec(domain: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("domain spec must be an object")
     return data
-

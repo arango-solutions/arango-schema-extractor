@@ -57,4 +57,3 @@ def test_fingerprint_ignores_generated_at():
     assert fingerprint_physical_schema(snapshot1, include_samples=False) == fingerprint_physical_schema(
         snapshot2, include_samples=False
     )
-

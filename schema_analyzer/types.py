@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 EntityMappingStyle = Literal["COLLECTION", "LABEL"]
 RelationshipMappingStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
@@ -27,6 +25,26 @@ class AnalysisMetadata(BaseModel):
     model: str | None = None
     repair_attempts: int = Field(default=0, alias="repairAttempts")
     used_baseline: bool = Field(default=False, alias="usedBaseline")
+    # Provenance (§3.13 PRD): per-request identity, timing, physical schema linkage.
+    run_id: str | None = Field(default=None, alias="runId")
+    analysis_started_at: str | None = Field(default=None, alias="analysisStartedAt")
+    analysis_completed_at: str | None = Field(default=None, alias="analysisCompletedAt")
+    physical_schema_fingerprint: str | None = Field(default=None, alias="physicalSchemaFingerprint")
+    cache_hit: bool = Field(default=False, alias="cacheHit")
+    prompt_version: str | None = Field(default=None, alias="promptVersion")
+    detected_domain: str | None = Field(default=None, alias="detectedDomain")
+    detected_domain_confidence: float | None = Field(default=None, alias="detectedDomainConfidence")
+    # Populated by the post-LLM reconciliation step (issue #5) when the
+    # analyzer had to backfill collections the LLM omitted. Absent when the
+    # LLM output already covered every snapshot collection.
+    reconciliation: dict[str, Any] | None = Field(default=None)
+    # Populated by the per-relationship cost statistics pass (issue #3) when
+    # a live DB handle is available. ``statistics_status`` reports the
+    # computation outcome (``"ok"``, ``"partial"``, ``"skipped_no_db"``)
+    # so callers can reason about completeness even when ``statistics`` is
+    # absent.
+    statistics: dict[str, Any] | None = Field(default=None)
+    statistics_status: str | None = Field(default=None, alias="statisticsStatus")
 
 
 class AnalysisResult(BaseModel):
@@ -36,5 +54,4 @@ class AnalysisResult(BaseModel):
 
 
 def now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

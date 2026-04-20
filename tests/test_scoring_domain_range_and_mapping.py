@@ -54,11 +54,13 @@ def test_mapping_style_scoring_generic_generic():
     }
     variant = PhysicalVariant(name="v", entity_style="GENERIC_WITH_TYPE", rel_style="GENERIC_WITH_TYPE")
     predicted_mapping = {
-        "entities": {"User": {"style": "LABEL", "collectionName": "entities", "typeField": "type", "typeValue": "User"}},
+        "entities": {
+            "User": {"style": "LABEL", "collectionName": "entities", "typeField": "type", "typeValue": "User"}
+        },
         "relationships": {
             "FOLLOWS": {
                 "style": "GENERIC_WITH_TYPE",
-                "collectionName": "relationships",
+                "edgeCollectionName": "relationships",
                 "typeField": "relation",
                 "typeValue": "FOLLOWS",
             }
@@ -67,4 +69,3 @@ def test_mapping_style_scoring_generic_generic():
     s = score_mapping_style(domain, predicted_mapping, variant)
     assert s["entities"]["accuracy"] == 1.0
     assert s["relationships"]["accuracy"] == 1.0
-

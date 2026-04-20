@@ -11,4 +11,3 @@ def test_cli_returns_2_on_error_and_writes_json(monkeypatch, capsys):
     assert rc == 2
     data = json.loads(out)
     assert data["ok"] is False
-

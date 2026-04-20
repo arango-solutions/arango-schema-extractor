@@ -3,19 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from schema_analyzer.utils import singularize
+
 
 def _norm(s: str) -> str:
     x = "".join(ch.lower() for ch in s if ch.isalnum() or ch in ("_", "-")).replace("-", "_")
-    # light singularization to avoid over-penalizing plural collection-derived names
-    if x.endswith("ies") and len(x) > 3:
-        x = x[:-3] + "y"
-    elif x.endswith("s") and not x.endswith("ss") and len(x) > 1:
-        x = x[:-1]
-    return x
+    return singularize(x)
 
 
 def _as_set(items: list[str]) -> set[str]:
     return {_norm(x) for x in items if isinstance(x, str) and x}
+
 
 def _norm_rel_sig(rel_type: str, from_ent: str, to_ent: str) -> str:
     return f"{_norm(rel_type)}|{_norm(from_ent)}|{_norm(to_ent)}"
@@ -42,8 +40,12 @@ def _prf(pred: set[str], truth: set[str]) -> PRF:
     return PRF(precision=p, recall=r, f1=f1)
 
 
-def extract_predicted_entities(conceptual_schema: dict[str, Any]) -> set[str]:
-    ents = conceptual_schema.get("entities") or []
+def _extract_entity_names(
+    data: dict[str, Any],
+    *,
+    include_labels: bool = False,
+) -> set[str]:
+    ents = data.get("entities") or []
     out: list[str] = []
     if isinstance(ents, list):
         for e in ents:
@@ -51,27 +53,23 @@ def extract_predicted_entities(conceptual_schema: dict[str, Any]) -> set[str]:
                 n = e.get("name")
                 if isinstance(n, str) and n:
                     out.append(n)
-                # sometimes models put labels only
-                labels = e.get("labels")
-                if isinstance(labels, list):
-                    out.extend([x for x in labels if isinstance(x, str)])
+                if include_labels:
+                    labels = e.get("labels")
+                    if isinstance(labels, list):
+                        out.extend(x for x in labels if isinstance(x, str))
     return _as_set(out)
+
+
+def extract_predicted_entities(conceptual_schema: dict[str, Any]) -> set[str]:
+    return _extract_entity_names(conceptual_schema, include_labels=True)
 
 
 def extract_truth_entities(domain_spec: dict[str, Any]) -> set[str]:
-    ents = domain_spec.get("entities") or []
-    out: list[str] = []
-    if isinstance(ents, list):
-        for e in ents:
-            if isinstance(e, dict):
-                n = e.get("name")
-                if isinstance(n, str) and n:
-                    out.append(n)
-    return _as_set(out)
+    return _extract_entity_names(domain_spec)
 
 
-def extract_predicted_relationship_types(conceptual_schema: dict[str, Any]) -> set[str]:
-    rels = conceptual_schema.get("relationships") or []
+def extract_relationship_types(data: dict[str, Any]) -> set[str]:
+    rels = data.get("relationships") or []
     out: list[str] = []
     if isinstance(rels, list):
         for r in rels:
@@ -82,45 +80,40 @@ def extract_predicted_relationship_types(conceptual_schema: dict[str, Any]) -> s
     return _as_set(out)
 
 
-def extract_truth_relationship_types(domain_spec: dict[str, Any]) -> set[str]:
-    rels = domain_spec.get("relationships") or []
-    out: list[str] = []
-    if isinstance(rels, list):
-        for r in rels:
-            if isinstance(r, dict):
-                t = r.get("type")
-                if isinstance(t, str) and t:
-                    out.append(t)
-    return _as_set(out)
+extract_predicted_relationship_types = extract_relationship_types
+extract_truth_relationship_types = extract_relationship_types
 
-def extract_truth_relationship_signatures(domain_spec: dict[str, Any]) -> set[str]:
-    rels = domain_spec.get("relationships") or []
+
+def _extract_relationship_signatures(
+    data: dict[str, Any],
+    *,
+    from_keys: tuple[str, ...] = ("from",),
+    to_keys: tuple[str, ...] = ("to",),
+) -> set[str]:
+    rels = data.get("relationships") or []
     out: set[str] = set()
     if isinstance(rels, list):
         for r in rels:
             if not isinstance(r, dict):
                 continue
             t = r.get("type")
-            frm = r.get("from")
-            to = r.get("to")
+            frm = next((r.get(k) for k in from_keys if r.get(k)), None)
+            to = next((r.get(k) for k in to_keys if r.get(k)), None)
             if all(isinstance(x, str) and x for x in (t, frm, to)):
                 out.add(_norm_rel_sig(t, frm, to))
     return out
+
+
+def extract_truth_relationship_signatures(domain_spec: dict[str, Any]) -> set[str]:
+    return _extract_relationship_signatures(domain_spec)
 
 
 def extract_predicted_relationship_signatures(conceptual_schema: dict[str, Any]) -> set[str]:
-    rels = conceptual_schema.get("relationships") or []
-    out: set[str] = set()
-    if isinstance(rels, list):
-        for r in rels:
-            if not isinstance(r, dict):
-                continue
-            t = r.get("type")
-            frm = r.get("fromEntity") or r.get("from")
-            to = r.get("toEntity") or r.get("to")
-            if all(isinstance(x, str) and x for x in (t, frm, to)):
-                out.add(_norm_rel_sig(t, frm, to))
-    return out
+    return _extract_relationship_signatures(
+        conceptual_schema,
+        from_keys=("fromEntity", "from"),
+        to_keys=("toEntity", "to"),
+    )
 
 
 def score_domain_range(domain_spec: dict[str, Any], conceptual_schema: dict[str, Any]) -> dict[str, Any]:
@@ -166,7 +159,7 @@ def expected_mapping_from_domain(domain_spec: dict[str, Any], variant: Any) -> d
             if isinstance(rt, str) and rt:
                 expected_rels[rt] = {
                     "style": "GENERIC_WITH_TYPE",
-                    "collectionName": col,
+                    "edgeCollectionName": col,
                     "typeField": tf,
                     "typeValue": rt,
                 }
@@ -194,7 +187,6 @@ def score_mapping_style(domain_spec: dict[str, Any], physical_mapping: dict[str,
             return False
         if exp["style"] == "COLLECTION":
             return got.get("collectionName") == exp.get("collectionName")
-        # LABEL
         return (
             got.get("collectionName") == exp.get("collectionName")
             and got.get("typeField") == exp.get("typeField")
@@ -208,9 +200,8 @@ def score_mapping_style(domain_spec: dict[str, Any], physical_mapping: dict[str,
             return False
         if exp["style"] == "DEDICATED_COLLECTION":
             return got.get("edgeCollectionName") == exp.get("edgeCollectionName")
-        # GENERIC_WITH_TYPE
         return (
-            got.get("collectionName") == exp.get("collectionName")
+            got.get("edgeCollectionName") == exp.get("edgeCollectionName")
             and got.get("typeField") == exp.get("typeField")
             and str(got.get("typeValue")) == str(exp.get("typeValue"))
         )
@@ -244,4 +235,3 @@ def score_against_domain(domain_spec: dict[str, Any], conceptual_schema: dict[st
             "truth_relationship_types": len(tru_r),
         },
     }
-

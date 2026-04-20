@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import logging
 import os
-from typing import Any, Literal
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+from typing import TYPE_CHECKING, Any, Literal
 
 from arango import ArangoClient
 
+if TYPE_CHECKING:
+    from arango.database import StandardDatabase
+
 from .analyzer import AgenticSchemaAnalyzer
+from .defaults import (
+    DEFAULT_CACHE_TTL_SECONDS,
+    DEFAULT_EXPORT_TARGET,
+    DEFAULT_REVIEW_THRESHOLD,
+    DEFAULT_TIMEOUT_MS,
+    FALLBACK_LIBRARY_VERSION,
+)
 from .docs import generate_schema_docs
 from .errors import SchemaAnalyzerError
 from .exports import export_mapping
@@ -13,8 +26,17 @@ from .owl_export import export_conceptual_model_as_owl_turtle
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_response_v1
 
+logger = logging.getLogger(__name__)
+
 
 Operation = Literal["analyze", "snapshot", "export", "docs", "owl"]
+
+
+def _library_version() -> str:
+    try:
+        return pkg_version("arangodb-schema-analyzer")
+    except PackageNotFoundError:
+        return FALLBACK_LIBRARY_VERSION
 
 
 def _env(name: str) -> str | None:
@@ -41,7 +63,7 @@ def _get_api_key(llm: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _connect_db(conn: dict[str, Any]):
+def _connect_db(conn: dict[str, Any]) -> StandardDatabase:
     url = conn.get("url")
     db_name = conn.get("database")
     username = conn.get("username") or "root"
@@ -52,7 +74,10 @@ def _connect_db(conn: dict[str, Any]):
     pw = _get_password(conn)
     if pw is None:
         raise SchemaAnalyzerError("Missing ArangoDB password (password or passwordEnvVar)", code="INVALID_ARGUMENT")
-    client = ArangoClient(hosts=url)
+    verify_tls = conn.get("verifyTls", True)
+    if not isinstance(verify_tls, bool):
+        verify_tls = True
+    client = ArangoClient(hosts=url, verify_override=verify_tls)
     return client.db(db_name, username=username, password=pw)
 
 
@@ -63,12 +88,40 @@ def _tooling_block(*, analysis: dict[str, Any] | None, snapshot: dict[str, Any] 
         if isinstance(md, dict):
             tooling["usedBaseline"] = bool(md.get("used_baseline"))
             tooling["repairAttempts"] = int(md.get("repair_attempts") or 0)
+            if md.get("runId"):
+                tooling["runId"] = md["runId"]
+            if md.get("physicalSchemaFingerprint"):
+                tooling["physicalSchemaFingerprint"] = md["physicalSchemaFingerprint"]
+            if "cacheHit" in md:
+                tooling["cacheHit"] = bool(md.get("cacheHit"))
     if snapshot and isinstance(snapshot, dict):
-        tooling["snapshotVersion"] = int(snapshot.get("version") or 0) if str(snapshot.get("version") or "").isdigit() else snapshot.get("version")
+        raw_ver = snapshot.get("version")
+        tooling["snapshotVersion"] = int(raw_ver or 0) if str(raw_ver or "").isdigit() else raw_ver
         tooling["snapshotFingerprint"] = fingerprint_physical_schema(snapshot, include_samples=False)
-    # Version comes from pyproject; keep in sync manually for now.
-    tooling["libraryVersion"] = "0.1.0"
+    tooling["libraryVersion"] = _library_version()
     return tooling
+
+
+def _build_response(
+    *,
+    op: str,
+    req_id: str | None,
+    result: dict[str, Any],
+    tooling: dict[str, Any],
+) -> dict[str, Any]:
+    resp: dict[str, Any] = {
+        "contractVersion": CONTRACT_VERSION,
+        "operation": op,
+        "ok": True,
+        "tooling": tooling,
+        "result": result,
+    }
+    if req_id:
+        resp["requestId"] = req_id
+    errors = validate_response_v1(resp)
+    if errors:
+        raise SchemaAnalyzerError(f"Internal response validation failed: {errors}", code="INTERNAL_ERROR")
+    return resp
 
 
 def run_tool(request: dict[str, Any]) -> dict[str, Any]:
@@ -90,6 +143,8 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
     req_id = req_id if isinstance(req_id, str) and req_id else None
 
     try:
+        logger.info("Processing operation=%s requestId=%s", op, req_id)
+
         if op in ("snapshot", "analyze"):
             conn = request["connection"]
             db = _connect_db(conn)
@@ -103,29 +158,32 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 sample_limit_per_collection=int(analysis_options.get("sampleLimitPerCollection") or 0),
                 include_samples_in_snapshot=bool(analysis_options.get("includeSamplesInSnapshot") or False),
             )
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=None, snapshot=snapshot),
-                "result": {"snapshot": snapshot},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"snapshot": snapshot},
+                tooling=_tooling_block(analysis=None, snapshot=snapshot),
+            )
 
         if op == "analyze":
             llm = request.get("llm") if isinstance(request.get("llm"), dict) else None
+            raw_max_rep = analysis_options.get("maxRepairAttempts")
+            max_repair = int(raw_max_rep) if raw_max_rep is not None else None
+            sys_prompt = llm.get("systemPrompt") if llm else None
+            if isinstance(sys_prompt, str) and not sys_prompt.strip():
+                sys_prompt = None
+            pv = llm.get("promptVersion") if llm else None
+            prompt_version = pv if isinstance(pv, str) and pv.strip() else None
             analyzer = AgenticSchemaAnalyzer(
                 llm_provider=(llm.get("provider") if llm else None),
                 api_key=_get_api_key(llm),
                 model=(llm.get("model") if llm else None),
                 cache=(analysis_options.get("cache") if isinstance(analysis_options.get("cache"), dict) else None),
-                cache_ttl_seconds=int(analysis_options.get("cacheTtlSeconds") or 86400),
-                review_threshold=float(analysis_options.get("reviewThreshold") or 0.6),
+                cache_ttl_seconds=int(analysis_options.get("cacheTtlSeconds") or DEFAULT_CACHE_TTL_SECONDS),
+                review_threshold=float(analysis_options.get("reviewThreshold") or DEFAULT_REVIEW_THRESHOLD),
+                system_prompt=sys_prompt,
+                prompt_version=prompt_version,
+                max_repair_attempts=max_repair,
             )
 
             include_samples = bool(analysis_options.get("includeSamplesInSnapshot") or False)
@@ -139,10 +197,11 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
 
             analysis = analyzer.analyze_physical_schema(
                 db,
-                timeout_ms=int(analysis_options.get("timeoutMs") or 60000),
+                timeout_ms=int(analysis_options.get("timeoutMs") or DEFAULT_TIMEOUT_MS),
                 sample_limit_per_collection=sample_limit,
                 include_samples_in_snapshot=include_samples,
                 use_cache=bool(analysis_options.get("useCache", True)),
+                _snapshot=snapshot,
             )
 
             analysis_dict = {
@@ -155,19 +214,12 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             if bool(output_options.get("includeSnapshot") or False):
                 result["snapshot"] = snapshot
 
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_dict, snapshot=snapshot),
-                "result": result,
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result=result,
+                tooling=_tooling_block(analysis=analysis_dict, snapshot=snapshot),
+            )
 
         # Transform operations
         input_obj = request.get("input") if isinstance(request.get("input"), dict) else {}
@@ -176,58 +228,39 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             raise SchemaAnalyzerError("input.analysis is required", code="INVALID_ARGUMENT")
 
         if op == "export":
-            target = (output_options.get("exportTarget") if isinstance(output_options.get("exportTarget"), str) else "cypher")
-            out = export_mapping(analysis_in, target=target)  # returns conceptualSchema/physicalMapping/metadata
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_in, snapshot=None),
-                "result": {"export": out},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            raw_target = output_options.get("exportTarget")
+            target = raw_target if isinstance(raw_target, str) else DEFAULT_EXPORT_TARGET
+            out = export_mapping(analysis_in, target=target)
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"export": out},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         if op == "docs":
             md = generate_schema_docs(analysis_in)
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_in, snapshot=None),
-                "result": {"markdown": md},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"markdown": md},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         if op == "owl":
             ttl = export_conceptual_model_as_owl_turtle(analysis_in)
-            resp = {
-                "contractVersion": CONTRACT_VERSION,
-                "operation": op,
-                "ok": True,
-                "tooling": _tooling_block(analysis=analysis_in, snapshot=None),
-                "result": {"turtle": ttl},
-            }
-            if req_id:
-                resp["requestId"] = req_id
-            v = validate_response_v1(resp)
-            if v:
-                raise SchemaAnalyzerError(f"Internal response validation failed: {v}", code="INTERNAL_ERROR")
-            return resp
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"turtle": ttl},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         raise SchemaAnalyzerError(f"Unsupported operation: {op}", code="INVALID_ARGUMENT")
 
     except SchemaAnalyzerError as e:
-        resp = {
+        logger.warning("Operation %s failed: [%s] %s", op, e.code, e)
+        resp: dict[str, Any] = {
             "contractVersion": CONTRACT_VERSION,
             "operation": op,
             "ok": False,
@@ -235,6 +268,18 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
         }
         if req_id:
             resp["requestId"] = req_id
-        # best-effort: validate, but don't override the original error
         return resp
-
+    except Exception:
+        logger.exception("Unexpected error during operation %s", op)
+        resp = {
+            "contractVersion": CONTRACT_VERSION,
+            "operation": op,
+            "ok": False,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An internal error occurred. Check server logs for details.",
+            },
+        }
+        if req_id:
+            resp["requestId"] = req_id
+        return resp

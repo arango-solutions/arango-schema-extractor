@@ -39,7 +39,7 @@ def test_aql_relationship_traversal_generic_with_type():
         relationships={
             "AUTHORED": {
                 "style": "GENERIC_WITH_TYPE",
-                "collectionName": "relationships",
+                "edgeCollectionName": "relationships",
                 "typeField": "relation",
                 "typeValue": "authored",
             }
@@ -54,4 +54,3 @@ def test_invalid_identifier_rejected():
     pm = PhysicalMapping(entities={"User": {"style": "COLLECTION", "collectionName": "users"}})
     with pytest.raises(ValueError):
         pm.aql_entity_match(variable="u; RETURN 1", entity_type="User")
-

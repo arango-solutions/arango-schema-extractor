@@ -6,7 +6,6 @@ from typing import Any, Literal
 from .errors import SchemaAnalyzerError
 from .utils import assert_aql_identifier
 
-
 EntityMappingStyle = Literal["COLLECTION", "LABEL"]
 RelationshipMappingStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
 
@@ -17,11 +16,11 @@ class PhysicalMapping:
     relationships: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
-    def empty(cls) -> "PhysicalMapping":
+    def empty(cls) -> PhysicalMapping:
         return cls()
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "PhysicalMapping":
+    def from_json(cls, data: dict[str, Any]) -> PhysicalMapping:
         ent = data.get("entities", {})
         rel = data.get("relationships", {})
         return cls(
@@ -130,12 +129,12 @@ class PhysicalMapping:
             return {"edge_variable": edge_variable, "bind_vars": bind_vars, "query": query}
 
         if style == "GENERIC_WITH_TYPE":
-            edge_collection_name = mapping.get("collectionName")
+            edge_collection_name = mapping.get("edgeCollectionName")
             type_field = mapping.get("typeField")
             type_value = mapping.get("typeValue")
             if not (edge_collection_name and type_field and type_value):
                 raise SchemaAnalyzerError(
-                    f"GENERIC_WITH_TYPE mapping requires collectionName, typeField, typeValue for: {rel_type}",
+                    f"GENERIC_WITH_TYPE mapping requires edgeCollectionName, typeField, typeValue for: {rel_type}",
                     code="INVALID_MAPPING",
                 )
             bind_vars["@edgeCollection"] = edge_collection_name
@@ -152,4 +151,3 @@ class PhysicalMapping:
             return {"edge_variable": edge_variable, "bind_vars": bind_vars, "query": query}
 
         raise SchemaAnalyzerError(f"Unsupported relationship mapping style: {style}", code="INVALID_MAPPING")
-

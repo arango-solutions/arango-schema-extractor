@@ -6,52 +6,170 @@
       "name": "entities",
       "type": "document",
       "count": 20000000,
-      "properties": { "type": 2 },
-      "indexes": [
-        { "type": "persistent", "fields": ["tenantId", "type"], "unique": false, "sparse": false, "name": "entities_tenant_type" },
-        { "type": "persistent", "fields": ["type"], "unique": false, "sparse": false, "name": "entities_type" },
-        { "type": "primary", "fields": ["_key"], "unique": true, "sparse": false, "name": "primary" }
-      ],
-      "candidate_type_field_counts": { "entityType": 1, "kind": 1, "type": 1 },
-      "candidate_type_fields": ["entityType", "kind", "type"],
-      "sample_field_value_counts": {
-        "entityType": [{ "value": "account", "count": 1 }],
-        "kind": [{ "value": "account", "count": 1 }],
-        "type": [{ "value": "Account", "count": 1 }]
+      "properties": {
+        "type": 2
       },
-      "inferred_entity_type": "Entity"
+      "indexes": [
+        {
+          "type": "persistent",
+          "fields": [
+            "tenantId",
+            "type"
+          ],
+          "unique": false,
+          "sparse": false,
+          "name": "entities_tenant_type"
+        },
+        {
+          "type": "persistent",
+          "fields": [
+            "type"
+          ],
+          "unique": false,
+          "sparse": false,
+          "name": "entities_type"
+        },
+        {
+          "type": "primary",
+          "fields": [
+            "_key"
+          ],
+          "unique": true,
+          "sparse": false,
+          "name": "primary"
+        }
+      ],
+      "candidate_type_fields": [
+        "type",
+        "kind",
+        "entityType"
+      ],
+      "inferred_entity_type": "Entity",
+      "sample_field_value_counts": {
+        "type": [
+          {
+            "value": "Account",
+            "count": 1
+          }
+        ],
+        "kind": [
+          {
+            "value": "account",
+            "count": 1
+          }
+        ],
+        "entityType": [
+          {
+            "value": "account",
+            "count": 1
+          }
+        ]
+      },
+      "observed_fields": {
+        "fields": [
+          "entityType",
+          "kind",
+          "type"
+        ]
+      }
     },
     {
       "name": "relationships",
       "type": "edge",
       "count": 250000000,
-      "properties": { "type": 3 },
-      "indexes": [
-        { "type": "persistent", "fields": ["_from"], "unique": false, "sparse": false, "name": "relationships_from" },
-        { "type": "persistent", "fields": ["relation"], "unique": false, "sparse": false, "name": "relationships_relation" },
-        { "type": "primary", "fields": ["_key"], "unique": true, "sparse": false, "name": "primary" }
-      ],
-      "candidate_type_field_counts": { "relation": 1, "relType": 1, "type": 1 },
-      "candidate_type_fields": ["relType", "relation", "type"],
-      "sample_field_value_counts": {
-        "relation": [{ "value": "owns", "count": 1 }],
-        "relType": [{ "value": "OWNS", "count": 1 }],
-        "type": [{ "value": "edge", "count": 1 }]
+      "properties": {
+        "type": 3
       },
-      "inferred_relationship_type": "RELATIONSHIPS"
+      "indexes": [
+        {
+          "type": "persistent",
+          "fields": [
+            "_from"
+          ],
+          "unique": false,
+          "sparse": false,
+          "name": "relationships_from"
+        },
+        {
+          "type": "persistent",
+          "fields": [
+            "relation"
+          ],
+          "unique": false,
+          "sparse": false,
+          "name": "relationships_relation"
+        },
+        {
+          "type": "primary",
+          "fields": [
+            "_key"
+          ],
+          "unique": true,
+          "sparse": false,
+          "name": "primary"
+        }
+      ],
+      "candidate_type_fields": [
+        "type",
+        "relation",
+        "relType"
+      ],
+      "inferred_relationship_type": "RELATIONSHIPS",
+      "sample_field_value_counts": {
+        "type": [
+          {
+            "value": "edge",
+            "count": 1
+          }
+        ],
+        "relation": [
+          {
+            "value": "owns",
+            "count": 1
+          }
+        ],
+        "relType": [
+          {
+            "value": "OWNS",
+            "count": 1
+          }
+        ]
+      },
+      "edge_endpoints": {
+        "from_collections": [],
+        "to_collections": [],
+        "collections_by_relation": {}
+      },
+      "observed_fields": {
+        "by_type": {
+          "owns": [
+            "relType",
+            "type"
+          ]
+        }
+      }
     }
   ],
   "graphs": [
-    { "name": "hybrid" }
+    {
+      "name": "hybrid"
+    }
   ],
   "graphs_detailed": [
     {
       "name": "hybrid",
       "edge_definitions": [
-        { "collection": "relationships", "from": ["entities"], "to": ["entities"] }
+        {
+          "collection": "relationships",
+          "from": [
+            "entities"
+          ],
+          "to": [
+            "entities"
+          ]
+        }
       ],
       "orphan_collections": []
     }
   ]
 }
-

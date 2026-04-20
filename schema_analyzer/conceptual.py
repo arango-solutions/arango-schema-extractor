@@ -11,11 +11,11 @@ class ConceptualSchema:
     properties: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
-    def empty(cls) -> "ConceptualSchema":
+    def empty(cls) -> ConceptualSchema:
         return cls()
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "ConceptualSchema":
+    def from_json(cls, data: dict[str, Any]) -> ConceptualSchema:
         return cls(
             entities=list(data.get("entities", [])) if isinstance(data.get("entities", []), list) else [],
             relationships=list(data.get("relationships", []))
@@ -39,10 +39,7 @@ class ConceptualSchema:
         return None
 
     def has_relationship_type(self, rel_type: str) -> bool:
-        for r in self.relationships:
-            if isinstance(r, dict) and r.get("type") == rel_type:
-                return True
-        return False
+        return any(isinstance(r, dict) and r.get("type") == rel_type for r in self.relationships)
 
     def validate_pattern(self, pattern_ast: dict[str, Any]) -> dict[str, Any]:
         """
@@ -94,4 +91,3 @@ class ConceptualSchema:
                 warnings.append({"code": "MISSING_REL_TYPE", "message": "Relationship type not specified in pattern"})
 
         return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
-

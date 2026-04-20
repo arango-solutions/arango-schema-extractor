@@ -15,7 +15,7 @@ class FakeProvider:
 def test_repair_loop_repairs_invalid_output_then_succeeds():
     invalid = '{"conceptualSchema":{}, "physicalMapping":{}, "metadata":{}}'
     valid = (
-        '{'
+        "{"
         '"conceptualSchema":{"entities":[],"relationships":[],"properties":[]},'
         '"physicalMapping":{"entities":{},"relationships":{}},'
         '"metadata":{"confidence":0.5,"timestamp":"t","analyzedCollectionCounts":{"documentCollections":0,"edgeCollections":0},"detectedPatterns":[]}'
@@ -28,4 +28,3 @@ def test_repair_loop_repairs_invalid_output_then_succeeds():
     assert res.repair_attempts == 1
     assert res.data["conceptualSchema"]["entities"] == []
     assert len(provider.calls) == 2
-

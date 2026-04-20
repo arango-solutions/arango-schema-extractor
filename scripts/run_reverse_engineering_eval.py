@@ -1,6 +1,5 @@
 import os
 import sys
-from dataclasses import asdict
 
 from arango import ArangoClient
 
@@ -83,4 +82,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

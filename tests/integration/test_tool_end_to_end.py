@@ -1,63 +1,28 @@
-import os
-import time
-
 import pytest
-
-from arango import ArangoClient
 
 from schema_analyzer.tool import run_tool
 
+from ..conftest import connect_root, env, skip_if_integration_not_enabled, wait_for_arango
 
 pytestmark = pytest.mark.integration
 
 
-def _env(name: str, default: str | None = None) -> str | None:
-    v = os.environ.get(name)
-    return v if v is not None else default
-
-
-def _skip_if_not_enabled():
-    if _env("RUN_INTEGRATION", "0") != "1":
-        pytest.skip("integration tests disabled (set RUN_INTEGRATION=1)")
-
-
-def _connect_root():
-    url = _env("ARANGO_URL", "http://localhost:8529")
-    user = _env("ARANGO_USER", "root")
-    pw = _env("ARANGO_PASS", "openSesame")
-    client = ArangoClient(hosts=url)
-    return client, client.db("_system", username=user, password=pw)
-
-
-def _wait_for_arango(sys_db, timeout_s: float = 20.0):
-    deadline = time.time() + timeout_s
-    last_err = None
-    while time.time() < deadline:
-        try:
-            sys_db.has_database("_system")
-            return
-        except Exception as e:
-            last_err = e
-            time.sleep(0.5)
-    raise RuntimeError(f"ArangoDB not ready after {timeout_s}s: {last_err}")
-
-
 def test_tool_snapshot_and_analyze_smoke():
-    _skip_if_not_enabled()
+    skip_if_integration_not_enabled()
 
-    client, sys_db = _connect_root()
-    _wait_for_arango(sys_db)
+    client, sys_db = connect_root()
+    wait_for_arango(sys_db)
 
-    base_db = _env("ARANGO_DB", "schema_analyzer_it")
+    base_db = env("ARANGO_DB", "schema_analyzer_it")
     db_name = f"{base_db}_tool_smoke"
     if sys_db.has_database(db_name):
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):
             sys_db.delete_database(db_name)
-        except Exception:
-            pass
     sys_db.create_database(db_name)
 
-    db = client.db(db_name, username=_env("ARANGO_USER", "root"), password=_env("ARANGO_PASS", "openSesame"))
+    db = client.db(db_name, username=env("ARANGO_USER", "root"), password=env("ARANGO_PASS", "openSesame"))
     if not db.has_collection("users"):
         db.create_collection("users", edge=False)
     if not db.has_collection("follows"):
@@ -65,18 +30,18 @@ def test_tool_snapshot_and_analyze_smoke():
 
     users = db.collection("users")
     follows = db.collection("follows")
-    a = users.insert({"name": "Alice"}, silent=True)
-    b = users.insert({"name": "Bob"}, silent=True)
-    follows.insert({"_from": a["_id"], "_to": b["_id"], "relation": "FOLLOWS"}, silent=True)
+    a = users.insert({"name": "Alice"})
+    b = users.insert({"name": "Bob"})
+    follows.insert({"_from": a["_id"], "_to": b["_id"], "relation": "FOLLOWS"})
 
     req_snapshot = {
         "contractVersion": "1",
         "operation": "snapshot",
         "connection": {
-            "url": _env("ARANGO_URL", "http://localhost:8529"),
+            "url": env("ARANGO_URL", "http://localhost:8529"),
             "database": db_name,
-            "username": _env("ARANGO_USER", "root"),
-            "password": _env("ARANGO_PASS", "openSesame"),
+            "username": env("ARANGO_USER", "root"),
+            "password": env("ARANGO_PASS", "openSesame"),
         },
         "analysisOptions": {"sampleLimitPerCollection": 1, "includeSamplesInSnapshot": False},
     }
@@ -90,10 +55,10 @@ def test_tool_snapshot_and_analyze_smoke():
         "contractVersion": "1",
         "operation": "analyze",
         "connection": {
-            "url": _env("ARANGO_URL", "http://localhost:8529"),
+            "url": env("ARANGO_URL", "http://localhost:8529"),
             "database": db_name,
-            "username": _env("ARANGO_USER", "root"),
-            "password": _env("ARANGO_PASS", "openSesame"),
+            "username": env("ARANGO_USER", "root"),
+            "password": env("ARANGO_PASS", "openSesame"),
         },
         # No LLM config on purpose: baseline inference path should still succeed.
         "analysisOptions": {"sampleLimitPerCollection": 1, "includeSamplesInSnapshot": False, "timeoutMs": 60000},
@@ -103,4 +68,3 @@ def test_tool_snapshot_and_analyze_smoke():
     analysis = resp_analyze["result"]["analysis"]
     assert analysis["conceptualSchema"]["entities"], "should infer at least one entity"
     assert analysis["physicalMapping"]["entities"], "should produce entity mappings"
-

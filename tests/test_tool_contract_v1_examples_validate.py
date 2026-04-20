@@ -21,4 +21,3 @@ def test_v1_contract_examples_validate():
 
     assert req_errors == []
     assert resp_errors == []
-
