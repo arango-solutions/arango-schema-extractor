@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+
+First PyPI release. Consolidates the quality + contract work originally
+slated for `0.2.0` (issues #2-#6) with the cheap schema-change probes
+(#7) and PRD amendment (#8) that landed on `main` shortly after.
+Version `0.2.0` was prepared on `main` but never published; `0.3.0` is
+the first tag to reach PyPI.
+
+### Tool contract changes (breaking)
+
+- **#6 key rename.** Property mappings now emit `field` (was
+  `physicalFieldName`). Relationship mappings now emit
+  `edgeCollectionName` and MUST NOT emit `collectionName` — the JSON
+  schema rejects the latter. Entity mappings still use
+  `collectionName` (unchanged). See `tool_contract/v1/response.schema.json`.
+  Consumers that previously ran a `_normalize_analyzer_pm` /
+  `_normalize_props` shim can delete it.
 
 ### New features
 
@@ -22,36 +38,6 @@
   Collection-level failures degrade gracefully (sentinel contribution)
   rather than raising. `exclude_collections` lets callers using a
   database-resident cache self-exclude their bookkeeping collection.
-
-### Documentation
-
-- **#8 PRD §3.13.3 / §4.1 update.** The PRD now sanctions the two-
-  fingerprint model (shape vs counts), a four-state change-status
-  contract (`unchanged` / `stats_changed` / `shape_changed` /
-  `no_cache`), stats-only refresh as the product behavior for
-  `stats_changed`, storage-agnostic caching, and self-exclusion of
-  database-resident cache collections from the shape fingerprint.
-
-## 0.2.0
-
-Quality + contract release. The analyzer now carries a per-relationship
-statistics block, hardens discriminator detection, guarantees complete
-collection coverage on LLM output, and emits the canonical property-
-and edge-collection key names every downstream consumer had been
-renaming by hand.
-
-### Tool contract changes (breaking)
-
-- **#6 key rename.** Property mappings now emit `field` (was
-  `physicalFieldName`). Relationship mappings now emit
-  `edgeCollectionName` and MUST NOT emit `collectionName` — the JSON
-  schema rejects the latter. Entity mappings still use
-  `collectionName` (unchanged). See `tool_contract/v1/response.schema.json`.
-  Consumers that previously ran a `_normalize_analyzer_pm` /
-  `_normalize_props` shim can delete it.
-
-### New features
-
 - **#3 statistics block.** `AgenticSchemaAnalyzer` now stamps
   `metadata.statistics` with per-collection counts, per-entity
   `estimated_count`, and a per-relationship bundle of `edge_count`,
@@ -82,6 +68,33 @@ renaming by hand.
   propagates `vci`, `deduplicate`, and `storedValues` from the raw
   ArangoDB index metadata. Vertex-Centric Indexes are excluded from the
   `indexed=True` heuristic on properties.
+
+### Documentation
+
+- **#8 PRD §3.13.3 / §4.1 update.** The PRD now sanctions the two-
+  fingerprint model (shape vs counts), a four-state change-status
+  contract (`unchanged` / `stats_changed` / `shape_changed` /
+  `no_cache`), stats-only refresh as the product behavior for
+  `stats_changed`, storage-agnostic caching, and self-exclusion of
+  database-resident cache collections from the shape fingerprint.
+
+### CI / Release infrastructure
+
+- Trusted-publisher GitHub Actions workflow (`publish.yml`) targeting
+  PyPI and TestPyPI via OIDC — no long-lived tokens.
+- `sdist` allow-list tightened in `pyproject.toml` so source
+  distributions include only package code, licence, readme, changelog,
+  and the tool-contract JSON schemas.
+- `schema_analyzer/py.typed` added so downstream type checkers pick up
+  the package's inline annotations.
+- Ruff lint + format are enforced by CI; mypy runs in advisory mode.
+
+## 0.2.0 (never published)
+
+`0.2.0` was bumped on `main` as the planned first PyPI release but the
+tag was never cut — #7 and #8 landed before release and the scope was
+rolled forward into `0.3.0`. Everything originally slated for `0.2.0`
+is part of `0.3.0` above.
 
 ## 0.1.0
 
