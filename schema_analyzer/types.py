@@ -38,6 +38,13 @@ class AnalysisMetadata(BaseModel):
     # analyzer had to backfill collections the LLM omitted. Absent when the
     # LLM output already covered every snapshot collection.
     reconciliation: dict[str, Any] | None = Field(default=None)
+    # Populated by the per-relationship cost statistics pass (issue #3) when
+    # a live DB handle is available. ``statistics_status`` reports the
+    # computation outcome (``"ok"``, ``"partial"``, ``"skipped_no_db"``)
+    # so callers can reason about completeness even when ``statistics`` is
+    # absent.
+    statistics: dict[str, Any] | None = Field(default=None)
+    statistics_status: str | None = Field(default=None, alias="statisticsStatus")
 
 
 class AnalysisResult(BaseModel):

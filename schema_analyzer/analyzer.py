@@ -15,6 +15,10 @@ from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
 from .domain_detect import DomainHint, detect_domain
 from .reconcile import reconcile_physical_mapping
+from .statistics import (
+    STATISTICS_STATUS_SKIPPED_NO_DB,
+    compute_statistics,
+)
 from .defaults import (
     CONFIDENCE_BASE,
     CONFIDENCE_FLOOR,
@@ -193,6 +197,57 @@ def _apply_reconciliation(
     )
 
 
+def _apply_statistics(
+    db: Any,
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """
+    Run the per-relationship statistics pass (issue #3) and stamp its
+    output onto ``data["metadata"]``.
+
+    * When ``db`` is ``None`` or ``compute_statistics`` returns ``None``
+      we set ``metadata.statistics_status = "skipped_no_db"`` and leave
+      ``metadata.statistics`` absent — this is the documented snapshot-
+      only contract.
+    * Otherwise ``metadata.statistics`` carries the full block and
+      ``metadata.statistics_status`` mirrors the inner ``status`` field
+      so consumers can branch on a single top-level key.
+
+    AQL errors on individual collections are already absorbed inside
+    ``compute_statistics`` (they surface as ``status="partial"``); this
+    wrapper logs + swallows any other unexpected failure so statistics
+    never break the analysis as a whole.
+    """
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+
+    if db is None:
+        meta["statistics_status"] = STATISTICS_STATUS_SKIPPED_NO_DB
+        return
+
+    try:
+        block = compute_statistics(
+            db,
+            snapshot,
+            data.get("physicalMapping") or {},
+            data.get("conceptualSchema"),
+        )
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning("statistics computation failed: %s", exc)
+        meta["statistics_status"] = STATISTICS_STATUS_SKIPPED_NO_DB
+        return
+
+    if block is None:
+        meta["statistics_status"] = STATISTICS_STATUS_SKIPPED_NO_DB
+        return
+
+    meta["statistics"] = block
+    meta["statistics_status"] = block.get("status")
+
+
 def _api_key_from_env(provider: str) -> str | None:
     env_var = get_provider_env_var(provider)
     return os.environ.get(env_var) if env_var else None
@@ -318,6 +373,12 @@ class AgenticSchemaAnalyzer:
             doc_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "document")
             edge_count = sum(1 for c in snapshot.get("collections", []) if c.get("type") == "edge")
             baseline = infer_baseline_from_snapshot(snapshot)
+            stats_holder: dict[str, Any] = {
+                "physicalMapping": baseline.get("physicalMapping", {}),
+                "conceptualSchema": baseline.get("conceptualSchema", {}),
+                "metadata": {},
+            }
+            _apply_statistics(db, stats_holder, snapshot)
             meta = AnalysisMetadata(
                 confidence=0.1,
                 timestamp=now_iso(),
@@ -332,6 +393,8 @@ class AgenticSchemaAnalyzer:
                 used_baseline=True,
                 detected_domain=domain_hint.domain if domain_hint else None,
                 detected_domain_confidence=domain_hint.confidence if domain_hint else None,
+                statistics=stats_holder["metadata"].get("statistics"),
+                statistics_status=stats_holder["metadata"].get("statistics_status"),
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
@@ -421,6 +484,8 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_statistics(db, data, prep.snapshot)
+
         return self._build_result(
             snapshot=prep.snapshot,
             data=data,
@@ -488,6 +553,8 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_statistics(db, data, prep.snapshot)
+
         return self._build_result(
             snapshot=prep.snapshot,
             data=data,
@@ -547,6 +614,12 @@ class AgenticSchemaAnalyzer:
             detected_domain=domain_hint.domain if domain_hint else None,
             detected_domain_confidence=domain_hint.confidence if domain_hint else None,
             reconciliation=data.get("metadata", {}).get("reconciliation")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            statistics=data.get("metadata", {}).get("statistics")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            statistics_status=data.get("metadata", {}).get("statistics_status")
             if isinstance(data.get("metadata"), dict)
             else None,
         )
