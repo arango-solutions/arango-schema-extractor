@@ -34,6 +34,10 @@ class AnalysisMetadata(BaseModel):
     prompt_version: str | None = Field(default=None, alias="promptVersion")
     detected_domain: str | None = Field(default=None, alias="detectedDomain")
     detected_domain_confidence: float | None = Field(default=None, alias="detectedDomainConfidence")
+    # Populated by the post-LLM reconciliation step (issue #5) when the
+    # analyzer had to backfill collections the LLM omitted. Absent when the
+    # LLM output already covered every snapshot collection.
+    reconciliation: dict[str, Any] | None = Field(default=None)
 
 
 class AnalysisResult(BaseModel):

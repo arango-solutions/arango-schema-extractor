@@ -14,6 +14,7 @@ from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
 from .domain_detect import DomainHint, detect_domain
+from .reconcile import reconcile_physical_mapping
 from .defaults import (
     CONFIDENCE_BASE,
     CONFIDENCE_FLOOR,
@@ -154,6 +155,42 @@ def _compute_confidence(errors: list[str], warnings: list[str]) -> float:
         return 0.0
     penalty = min(CONFIDENCE_MAX_PENALTY, CONFIDENCE_WARNING_PENALTY * len(warnings))
     return max(CONFIDENCE_FLOOR, CONFIDENCE_BASE - penalty)
+
+
+def _apply_reconciliation(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+    warnings: list[str],
+) -> None:
+    """
+    Run post-LLM collection-coverage reconciliation and fold the summary
+    into ``data["metadata"]`` + the caller-owned warnings list.
+
+    No-op (no metadata mutation, no warning appended) when the LLM output
+    already covers every snapshot collection.
+    """
+    summary = reconcile_physical_mapping(data, snapshot)
+    if summary is None:
+        return
+
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+    meta["reconciliation"] = summary
+
+    backfilled = summary.get("backfilled_collections") or []
+    warning_msg = (
+        f"LLM physical mapping omitted {len(backfilled)} "
+        f"snapshot collection{'s' if len(backfilled) != 1 else ''}; "
+        f"backfilled from baseline: {', '.join(backfilled)}"
+    )
+    warnings.append(warning_msg)
+    logger.info(
+        "Reconciliation: backfilled %d missing collection(s) from baseline: %s",
+        len(backfilled),
+        backfilled,
+    )
 
 
 def _api_key_from_env(provider: str) -> str | None:
@@ -368,6 +405,7 @@ class AgenticSchemaAnalyzer:
             )
             data = wf.data
             repair_attempts = wf.repair_attempts
+            _apply_reconciliation(data, prep.snapshot, warnings)
         except SchemaAnalyzerError as e:
             logger.warning("LLM workflow failed, falling back to baseline: %s", e)
             baseline = infer_baseline_from_snapshot(prep.snapshot)
@@ -434,6 +472,7 @@ class AgenticSchemaAnalyzer:
             )
             data = wf.data
             repair_attempts = wf.repair_attempts
+            _apply_reconciliation(data, prep.snapshot, warnings)
         except SchemaAnalyzerError as e:
             logger.warning("Async LLM workflow failed, falling back to baseline: %s", e)
             baseline = infer_baseline_from_snapshot(prep.snapshot)
@@ -507,6 +546,9 @@ class AgenticSchemaAnalyzer:
             used_baseline=bool(errors),
             detected_domain=domain_hint.domain if domain_hint else None,
             detected_domain_confidence=domain_hint.confidence if domain_hint else None,
+            reconciliation=data.get("metadata", {}).get("reconciliation")
+            if isinstance(data.get("metadata"), dict)
+            else None,
         )
         metadata = self._stamp_metadata(metadata, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
 
