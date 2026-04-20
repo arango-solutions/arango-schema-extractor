@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -521,6 +522,144 @@ def fingerprint_physical_schema(snapshot: dict[str, Any], *, include_samples: bo
     if not include_samples:
         data = _omit_samples(data)
     return sha256_hex(stable_dumps(data))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Cheap db-keyed fingerprint probes (issue #7)
+#
+# These helpers answer "has the physical schema changed?" without running a
+# full snapshot. They read only python-arango primitives (``db.collections()``,
+# ``col.indexes()``, ``col.count()``) — no AQL, no samples, no analyzer logic.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _stable_index_digest(idx: dict[str, Any]) -> str:
+    """Identity-only digest of an index.
+
+    Intentionally insensitive to the auto-generated ``name`` and ``id`` that
+    ArangoDB can re-assign to semantically-equivalent indexes across restarts
+    and rebuilds. Primary indexes contribute no bytes because every collection
+    has exactly one and their content is not user-controlled.
+    """
+    if not isinstance(idx, dict):
+        return ""
+    if idx.get("type") == "primary":
+        return ""
+    fields = idx.get("fields")
+    fields_part = ",".join(str(f) for f in fields) if isinstance(fields, list) else ""
+    return "|".join(
+        [
+            str(idx.get("type") or ""),
+            fields_part,
+            "u" if idx.get("unique") else "",
+            "s" if idx.get("sparse") else "",
+            "v" if idx.get("vci") else "",
+            # ``deduplicate`` defaults to True on persistent indexes; only the
+            # explicit opt-out (``False``) perturbs the digest.
+            "d" if idx.get("deduplicate") is False else "",
+        ]
+    )
+
+
+def _iter_user_collections(
+    db: StandardDatabase,
+    *,
+    exclude_collections: Iterable[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return user (non-system) collection descriptors sorted by name.
+
+    Tolerates a ``db.collections()`` call that raises or returns a non-list.
+    Each entry is the raw descriptor dict from python-arango (keys such as
+    ``name``, ``type``, ``status``); callers should only rely on ``name`` and
+    ``type``.
+    """
+    exclude = set(exclude_collections or ())
+    try:
+        raw = db.collections()
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        name = c.get("name", "")
+        if not isinstance(name, str) or not name or name.startswith("_"):
+            continue
+        if name in exclude:
+            continue
+        out.append(c)
+    out.sort(key=lambda x: str(x.get("name", "")))
+    return out
+
+
+def fingerprint_physical_shape(
+    db: StandardDatabase,
+    *,
+    exclude_collections: Iterable[str] | None = None,
+) -> str:
+    """Cheap shape-only fingerprint of the physical schema.
+
+    Hashes only the user-collection set, each collection's type
+    (``document`` vs ``edge``), and each collection's sorted set of index
+    digests (``type``, ``fields``, ``unique``, ``sparse``, ``vci``,
+    ``deduplicate``). Auto-generated index ``name`` / ``id`` are excluded.
+
+    **Stable** under ordinary writes (INSERT / UPDATE / REMOVE).
+
+    **Changes** when:
+
+    * a user collection is created or dropped,
+    * a collection changes type between document and edge,
+    * an index is added, dropped, or any identity-carrying property of an
+      existing index changes.
+
+    Individual-collection failures (e.g. ``indexes()`` raises) are absorbed
+    as a sentinel contribution rather than propagated — callers comparing
+    two fingerprints against each other still get a useful boolean.
+    """
+    parts: list[str] = []
+    for c in _iter_user_collections(db, exclude_collections=exclude_collections):
+        name = str(c.get("name", ""))
+        col_type = "edge" if c.get("type") in (3, "edge") else "doc"
+        try:
+            idxs = list(db.collection(name).indexes() or [])
+        except Exception:
+            idxs = []
+        digests = sorted(d for d in (_stable_index_digest(i) for i in idxs) if d)
+        parts.append(f"{name}:{col_type}:" + ";".join(digests))
+    raw = f"{getattr(db, 'name', '')}|" + "|".join(parts)
+    return sha256_hex(raw)
+
+
+def fingerprint_physical_counts(
+    db: StandardDatabase,
+    *,
+    exclude_collections: Iterable[str] | None = None,
+) -> str:
+    """Shape fingerprint combined with per-collection row counts.
+
+    Changes whenever :func:`fingerprint_physical_shape` changes **or** any
+    included collection's ``count()`` changes. Intended for consumers that
+    want to refresh derived *statistics* (cf. issue #3) when only data volume
+    drifts, while the conceptual schema and physical mapping themselves
+    remain valid.
+
+    A ``count()`` failure on any individual collection contributes ``-1`` so
+    the fingerprint stays well-defined under transient errors.
+    """
+    shape = fingerprint_physical_shape(db, exclude_collections=exclude_collections)
+    parts: list[str] = []
+    for c in _iter_user_collections(db, exclude_collections=exclude_collections):
+        name = str(c.get("name", ""))
+        try:
+            count = db.collection(name).count()
+        except Exception:
+            count = -1
+        parts.append(f"{name}:{count}")
+    raw = f"{shape}|" + "|".join(parts)
+    return sha256_hex(raw)
 
 
 def _normalize_index(idx: Any) -> dict[str, Any]:

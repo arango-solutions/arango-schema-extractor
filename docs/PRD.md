@@ -244,10 +244,23 @@ Inspired by **AOE** (`ontology_generator`): multi-signal confidence, structural 
 
 **3.13.3. Change detection and diff (target)**
 
+Schema-analyzer distinguishes between **physical shape** changes (which invalidate the conceptual schema and physical mapping) and **data-volume** changes (which invalidate only derived statistics). Consumers MUST be able to determine which, if either, has occurred **without** running a full snapshot.
+
 | Capability | Requirement |
 |---|---|
-| **Trigger re-analysis** | When physical fingerprint changes, flag prior analysis as **stale** or auto-queue re-run (product policy). |
+| **Shape fingerprint** | Cheap `fingerprint_physical_shape(db)` probe — hashes only the collection set, per-collection type, and per-collection sorted index digests `(type, fields, unique, sparse, vci, deduplicate)` with auto-generated `name` and `id` excluded. Stable under ordinary writes. |
+| **Counts fingerprint** | Cheap `fingerprint_physical_counts(db)` probe — shape fingerprint concatenated with per-collection `count()`. Changes whenever either the shape or any collection's row count changes. |
+| **Change-state contract** | Callers comparing current fingerprints against cached fingerprints MUST be able to derive a four-valued status: `unchanged` (both match), `stats_changed` (shape matches, counts differ), `shape_changed` (shape differs), `no_cache` (no prior fingerprint recorded). |
+| **Stats-only refresh** | When status is `stats_changed`, the library MUST preserve the cached `conceptual_schema` and `physical_mapping` and recompute only derived statistics (cf. §3 `statistics` block). Analyzer invocation, OWL regeneration, type-discriminator detection, and sample extraction MUST be skipped on this path. |
+| **Trigger re-analysis** | When status is `shape_changed`, flag prior analysis as **stale** or auto-queue re-run (product policy). |
 | **Diff** | Compare two `AnalysisResult` payloads (or OWL exports): added/removed/changed entities, relationships, and mapping styles — analogous to AOE `get_ontology_diff` but scoped to **schema-derived conceptual models**. |
+
+**Implementation notes (non-normative):**
+
+- The existing `fingerprint_physical_schema(snapshot)` (§4.1) remains the correct key for a full-snapshot cache. The new shape and counts fingerprints are cheap probes intended for "is refreshing worth it?" decisions, not replacements.
+- Auto-generated index identifiers (`name`, `id`) MUST NOT contribute to the shape fingerprint; ArangoDB may assign different values to semantically-equivalent indexes across restarts.
+- Transient failures on individual collections (e.g. `indexes()` or `count()` raises) MUST degrade gracefully — the fingerprint function contributes a sentinel rather than propagating the exception.
+- Both probes accept an optional `exclude_collections` iterable so callers using a database-resident cache can self-exclude their bookkeeping collection and avoid fingerprint self-perturbation.
 
 **3.13.4. Full temporal graph (optional / long-term)**
 
@@ -259,11 +272,14 @@ Full **edge-interval time travel** for every conceptual entity (AOE-style `creat
 
 #### **4.1. Caching**
 
-- Filesystem-based cache keyed by physical schema fingerprint (SHA-256 of normalized snapshot)
-- Configurable TTL (default 86400s / 24h)
-- `generated_at` timestamp excluded from fingerprint for stability
+- Default cache is filesystem-based, keyed by physical schema fingerprint (SHA-256 of normalized snapshot).
+- The cache interface (`get` / `set` / `invalidate`) is storage-agnostic; deployments MAY substitute alternate backends (collection-backed, Redis, object store, etc.). Any substitute MUST be tolerant to missing entries, corrupt documents, and stale cache-document schema versions.
+- When using a database-resident cache (e.g. an ArangoDB collection in the same database being analyzed), the cache collection MUST be excluded from shape-fingerprint computation (`fingerprint_physical_shape(db, exclude_collections={...})`) to prevent self-invalidation on its own writes.
+- Cache documents SHOULD carry a `cache_schema_version` field so loading code can refuse-and-discard documents whose shape it no longer understands.
+- Configurable TTL (default 86400s / 24h).
+- `generated_at` timestamp excluded from fingerprint for stability.
 
-**Implementation**: `cache.py` (`AnalysisCache` / `FilesystemCache`).
+**Implementation**: `cache.py` (`AnalysisCache` / `FilesystemCache`). Alternate backends, if any, live alongside.
 
 #### **4.2. Determinism**
 

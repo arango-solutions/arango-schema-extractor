@@ -5,6 +5,11 @@ from .exports import export_mapping
 from .mapping import PhysicalMapping
 from .owl_export import export_conceptual_model_as_owl_turtle
 from .providers import list_providers, register_provider
+from .snapshot import (
+    fingerprint_physical_counts,
+    fingerprint_physical_schema,
+    fingerprint_physical_shape,
+)
 from .tool import run_tool
 
 __all__ = [
@@ -17,4 +22,7 @@ __all__ = [
     "register_provider",
     "list_providers",
     "run_tool",
+    "fingerprint_physical_schema",
+    "fingerprint_physical_shape",
+    "fingerprint_physical_counts",
 ]
