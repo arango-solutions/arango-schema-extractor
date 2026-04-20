@@ -16,6 +16,7 @@ Covers the six acceptance criteria from the issue:
   AC6. Zero-source / zero-target guards collapse to the documented
        defaults (``0.0`` degrees, selectivity=1.0) rather than blowing up.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -27,7 +28,6 @@ from schema_analyzer.statistics import (
     _classify_cardinality,
     compute_statistics,
 )
-
 
 # ── In-memory fake DB ─────────────────────────────────────────────────
 
@@ -124,11 +124,7 @@ def test_compute_statistics_covers_entities_and_relationships() -> None:
             }
         },
     }
-    conceptual_schema = {
-        "relationships": [
-            {"type": "ACTED_IN", "fromEntity": "Person", "toEntity": "Movie"}
-        ]
-    }
+    conceptual_schema = {"relationships": [{"type": "ACTED_IN", "fromEntity": "Person", "toEntity": "Movie"}]}
 
     out = compute_statistics(db, snapshot, physical_mapping, conceptual_schema)
     assert out is not None
@@ -211,11 +207,7 @@ def test_compute_statistics_generic_with_type_uses_filtered_edge_count() -> None
             }
         },
     }
-    conceptual_schema = {
-        "relationships": [
-            {"type": "ACTED_IN", "fromEntity": "Person", "toEntity": "Movie"}
-        ]
-    }
+    conceptual_schema = {"relationships": [{"type": "ACTED_IN", "fromEntity": "Person", "toEntity": "Movie"}]}
 
     out = compute_statistics(db, snapshot, physical_mapping, conceptual_schema)
     rel = out["relationships"]["ACTED_IN"]
@@ -240,13 +232,9 @@ def test_compute_statistics_zero_source_collapses_to_defaults() -> None:
             "A": {"style": "COLLECTION", "collectionName": "A"},
             "B": {"style": "COLLECTION", "collectionName": "B"},
         },
-        "relationships": {
-            "R": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "E"}
-        },
+        "relationships": {"R": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "E"}},
     }
-    conceptual_schema = {
-        "relationships": [{"type": "R", "fromEntity": "A", "toEntity": "B"}]
-    }
+    conceptual_schema = {"relationships": [{"type": "R", "fromEntity": "A", "toEntity": "B"}]}
     out = compute_statistics(db, snapshot, physical_mapping, conceptual_schema)
     rel = out["relationships"]["R"]
     assert rel["edge_count"] == 0
@@ -271,9 +259,7 @@ def test_compute_statistics_cardinality_one_to_one() -> None:
             "A": {"style": "COLLECTION", "collectionName": "A"},
             "B": {"style": "COLLECTION", "collectionName": "B"},
         },
-        "relationships": {
-            "R": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "E"}
-        },
+        "relationships": {"R": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "E"}},
     }
     cs = {"relationships": [{"type": "R", "fromEntity": "A", "toEntity": "B"}]}
     out = compute_statistics(db, snapshot, pm, cs)
@@ -325,7 +311,6 @@ def test_analyzer_stamps_statistics_status_when_fake_db_has_no_aql(monkeypatch) 
     a result — the statistics block is simply absent and ``statistics_status``
     falls back to ``"skipped_no_db"``.
     """
-    import schema_analyzer.analyzer as analyzer_mod
     from schema_analyzer.analyzer import AgenticSchemaAnalyzer
 
     class _FakeCollection:
@@ -349,8 +334,6 @@ def test_analyzer_stamps_statistics_status_when_fake_db_has_no_aql(monkeypatch) 
             return []
 
     analyzer = AgenticSchemaAnalyzer()  # no provider → baseline path
-    res = analyzer.analyze_physical_schema(
-        _NoAQLDB(), sample_limit_per_collection=0, use_cache=False
-    )
+    res = analyzer.analyze_physical_schema(_NoAQLDB(), sample_limit_per_collection=0, use_cache=False)
     assert res.metadata.statistics is None
     assert res.metadata.statistics_status == STATISTICS_STATUS_SKIPPED_NO_DB

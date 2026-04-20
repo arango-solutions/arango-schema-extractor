@@ -19,8 +19,7 @@ def _require_fastmcp():
         from mcp.server.fastmcp import FastMCP
     except ImportError as e:  # pragma: no cover
         print(
-            "The MCP server requires the 'mcp' package. Install with:\n"
-            "  pip install 'arangodb-schema-analyzer[mcp]'",
+            "The MCP server requires the 'mcp' package. Install with:\n  pip install 'arangodb-schema-analyzer[mcp]'",
             file=sys.stderr,
         )
         raise SystemExit(1) from e

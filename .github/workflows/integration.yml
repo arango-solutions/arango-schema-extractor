@@ -28,7 +28,7 @@ jobs:
       - name: Wait for ArangoDB
         run: |
           for i in {1..60}; do
-            if curl -fsS "http://localhost:18529/_api/version" >/dev/null; then
+            if curl -fsS -u root:openSesame "http://localhost:18529/_api/version" >/dev/null; then
               echo "ArangoDB is ready"
               exit 0
             fi

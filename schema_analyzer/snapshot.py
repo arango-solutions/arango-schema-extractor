@@ -117,9 +117,7 @@ def _iter_scalar_values(v: Any):
         return
 
 
-def _pick_best_type_field(
-    entry: dict[str, Any], *, is_edge: bool = False
-) -> str | None:
+def _pick_best_type_field(entry: dict[str, Any], *, is_edge: bool = False) -> str | None:
     """Pick the best type-discriminator field from snapshot stats.
 
     Acceptance rules (any failure disqualifies the field):
@@ -214,10 +212,9 @@ def _passes_distribution_shape(
         return n_distinct == 1
     if n_distinct > MAX_TYPE_FIELD_DISTINCT_VALUES:
         return False
-    if total_docs > 0 and observed_count > 0:
-        if (observed_count / total_docs) < MIN_TYPE_FIELD_COVERAGE_FRACTION:
-            return False
-    return True
+    return not (
+        total_docs > 0 and observed_count > 0 and (observed_count / total_docs) < MIN_TYPE_FIELD_COVERAGE_FRACTION
+    )
 
 
 def _single_value_edge_fallback(
@@ -251,7 +248,13 @@ def _type_values_for_field(entry: dict[str, Any], field: str) -> list[str]:
     items = (entry.get("sample_field_value_counts") or {}).get(field)
     if not isinstance(items, list):
         return []
-    return sorted({str(it["value"]).strip() for it in items if isinstance(it, dict) and "value" in it and str(it["value"]).strip()})
+    return sorted(
+        {
+            str(it["value"]).strip()
+            for it in items
+            if isinstance(it, dict) and "value" in it and str(it["value"]).strip()
+        }
+    )
 
 
 def _detect_type_fields_via_collect(
@@ -321,8 +324,7 @@ def _detect_observed_fields(
         for tv in type_values:
             try:
                 cursor = db.aql.execute(
-                    "FOR d IN @@c FILTER d[@field] == @val "
-                    "LIMIT @lim RETURN ATTRIBUTES(d)",
+                    "FOR d IN @@c FILTER d[@field] == @val LIMIT @lim RETURN ATTRIBUTES(d)",
                     bind_vars={
                         "@c": collection_name,
                         "field": type_field,

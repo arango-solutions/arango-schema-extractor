@@ -4,6 +4,7 @@ both PG-style and LPG-style Neo4j Movies databases.
 
 Requires a running ArangoDB instance and ``RUN_INTEGRATION=1``.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -137,8 +138,8 @@ class TestPGBaseline:
         ents = {e["name"]: e for e in pg_baseline["conceptualSchema"]["entities"]}
         movie_props = {p["name"] for p in ents["Movie"]["properties"]}
         person_props = {p["name"] for p in ents["Person"]["properties"]}
-        assert EXPECTED_MOVIE_PROPS <= movie_props
-        assert EXPECTED_PERSON_PROPS <= person_props
+        assert movie_props >= EXPECTED_MOVIE_PROPS
+        assert person_props >= EXPECTED_PERSON_PROPS
 
     def test_domain_range(self, pg_baseline):
         rels = {r["type"]: r for r in pg_baseline["conceptualSchema"]["relationships"]}
@@ -180,8 +181,8 @@ class TestLPGBaseline:
         ents = {e["name"]: e for e in lpg_baseline["conceptualSchema"]["entities"]}
         movie_props = {p["name"] for p in ents["Movie"]["properties"]}
         person_props = {p["name"] for p in ents["Person"]["properties"]}
-        assert EXPECTED_MOVIE_PROPS <= movie_props
-        assert EXPECTED_PERSON_PROPS <= person_props
+        assert movie_props >= EXPECTED_MOVIE_PROPS
+        assert person_props >= EXPECTED_PERSON_PROPS
 
     def test_domain_range(self, lpg_baseline):
         rels = {r["type"]: r for r in lpg_baseline["conceptualSchema"]["relationships"]}
@@ -236,8 +237,8 @@ class TestHybridBaseline:
         ents = {e["name"]: e for e in hybrid_baseline["conceptualSchema"]["entities"]}
         movie_props = {p["name"] for p in ents["Movie"]["properties"]}
         person_props = {p["name"] for p in ents["Person"]["properties"]}
-        assert EXPECTED_MOVIE_PROPS <= movie_props
-        assert EXPECTED_PERSON_PROPS <= person_props
+        assert movie_props >= EXPECTED_MOVIE_PROPS
+        assert person_props >= EXPECTED_PERSON_PROPS
 
     def test_domain_range(self, hybrid_baseline):
         rels = {r["type"]: r for r in hybrid_baseline["conceptualSchema"]["relationships"]}
@@ -283,9 +284,12 @@ class TestCrossStyleEquivalence:
         assert pg_rels == lpg_rels == hybrid_rels
 
     def test_same_domain_range(self, pg_baseline, lpg_baseline, hybrid_baseline):
-        pg_rels = {r["type"]: (r["fromEntity"], r["toEntity"]) for r in pg_baseline["conceptualSchema"]["relationships"]}
-        lpg_rels = {r["type"]: (r["fromEntity"], r["toEntity"]) for r in lpg_baseline["conceptualSchema"]["relationships"]}
-        hybrid_rels = {r["type"]: (r["fromEntity"], r["toEntity"]) for r in hybrid_baseline["conceptualSchema"]["relationships"]}
+        def _rel_map(baseline):
+            return {r["type"]: (r["fromEntity"], r["toEntity"]) for r in baseline["conceptualSchema"]["relationships"]}
+
+        pg_rels = _rel_map(pg_baseline)
+        lpg_rels = _rel_map(lpg_baseline)
+        hybrid_rels = _rel_map(hybrid_baseline)
         assert pg_rels == lpg_rels == hybrid_rels
 
 

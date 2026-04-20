@@ -1,4 +1,5 @@
 """Tests for schema_analyzer.domain_detect — business-domain detection from snapshots."""
+
 from __future__ import annotations
 
 import pytest
@@ -11,8 +12,8 @@ from schema_analyzer.domain_detect import (
     detect_domain,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────────
+
 
 def _make_snapshot(
     *,
@@ -23,7 +24,7 @@ def _make_snapshot(
 ) -> dict:
     """Minimal snapshot for domain detection testing."""
     collections = []
-    for name in (collection_names or []):
+    for name in collection_names or []:
         col: dict = {
             "name": name,
             "type": "document",
@@ -31,9 +32,7 @@ def _make_snapshot(
         }
         if type_values and name in type_values:
             col["candidate_type_fields"] = ["type"]
-            col["sample_field_value_counts"] = {
-                "type": [{"value": v, "count": 10} for v in type_values[name]]
-            }
+            col["sample_field_value_counts"] = {"type": [{"value": v, "count": 10} for v in type_values[name]]}
         if field_names and name in field_names:
             col["observed_fields"] = {"fields": field_names[name]}
         collections.append(col)
@@ -48,6 +47,7 @@ def _make_snapshot(
 
 
 # ── Signal extraction ─────────────────────────────────────────────────
+
 
 class TestExtractSignalTokens:
     def test_extracts_collection_names(self):
@@ -94,6 +94,7 @@ class TestExtractSignalTokens:
 
 # ── Scoring ───────────────────────────────────────────────────────────
 
+
 class TestScoring:
     def test_perfect_overlap(self):
         score, matched = _score({"a", "b", "c"}, {"a", "b", "c"})
@@ -116,6 +117,7 @@ class TestScoring:
 
 
 # ── Spec keyword building ────────────────────────────────────────────
+
 
 class TestBuildSpecKeywords:
     def test_includes_entity_names(self):
@@ -151,6 +153,7 @@ class TestBuildSpecKeywords:
 
 
 # ── Full detection (against builtin vocabularies) ─────────────────────
+
 
 class TestDetectDomain:
     def test_detects_movies_domain(self):
@@ -236,6 +239,7 @@ class TestDetectDomain:
 
 
 # ── Prompt context formatting ─────────────────────────────────────────
+
 
 class TestPromptContext:
     def test_prompt_context_includes_domain_name(self):

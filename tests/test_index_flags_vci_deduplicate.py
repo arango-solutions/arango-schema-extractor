@@ -2,6 +2,7 @@
 Tests for issue #2: `vci`, `deduplicate`, and `storedValues` flags on
 exported physical-mapping indexes.
 """
+
 from __future__ import annotations
 
 from schema_analyzer.baseline import (
@@ -67,9 +68,7 @@ def test_deduplicate_only_emitted_when_explicitly_false() -> None:
     )
     assert "deduplicate" not in default_true[0]
 
-    missing = _extract_indexes_for_mapping(
-        _col([{"type": "persistent", "fields": ["tags[*]"]}])
-    )
+    missing = _extract_indexes_for_mapping(_col([{"type": "persistent", "fields": ["tags[*]"]}]))
     assert "deduplicate" not in missing[0]
 
 
@@ -90,9 +89,7 @@ def test_stored_values_round_trip_when_non_empty() -> None:
 
 def test_stored_values_omitted_when_empty_or_missing_or_bad_type() -> None:
     for extra in ({}, {"storedValues": []}, {"storedValues": "not-a-list"}, {"storedValues": [1, 2]}):
-        out = _extract_indexes_for_mapping(
-            _col([{"type": "persistent", "fields": ["name"], **extra}])
-        )
+        out = _extract_indexes_for_mapping(_col([{"type": "persistent", "fields": ["name"], **extra}]))
         assert "storedValues" not in out[0]
 
 

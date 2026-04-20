@@ -4,6 +4,7 @@ Seed helpers for Neo4j Movies dataset in PG, LPG, and hybrid physical styles.
 Data fixtures live in tests/fixtures/datasets/movies/ and were imported from
 the arango-cypher-py project (the canonical Neo4j Movies ArangoDB dataset).
 """
+
 from __future__ import annotations
 
 import json
@@ -88,7 +89,10 @@ def seed_movies_pg(db: Any) -> None:
     _ensure_persistent_index(db.collection("persons"), ["name"], name="idx_persons_name")
     _ensure_persistent_index(db.collection("movies"), ["title"], name="idx_movies_title")
 
-    logger.info("Seeded movies PG: %d collections", len(data.get("collections", {})) + len(data.get("edge_collections", {})))
+    logger.info(
+        "Seeded movies PG: %d collections",
+        len(data.get("collections", {})) + len(data.get("edge_collections", {})),
+    )
 
 
 def seed_movies_hybrid(db: Any) -> None:
@@ -111,4 +115,8 @@ def seed_movies_hybrid(db: Any) -> None:
     _ensure_persistent_index(db.collection("movies"), ["title"], name="idx_movies_title")
     _ensure_persistent_index(edges_col, ["relation"], name="idx_edges_relation")
 
-    logger.info("Seeded movies hybrid: %d entities, %d edges", sum(len(v) for v in data.get("collections", {}).values()), len(edges))
+    logger.info(
+        "Seeded movies hybrid: %d entities, %d edges",
+        sum(len(v) for v in data.get("collections", {}).values()),
+        len(edges),
+    )

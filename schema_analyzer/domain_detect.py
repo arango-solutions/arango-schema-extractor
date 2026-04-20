@@ -10,6 +10,7 @@ Returns the best-matching domain name + description + a confidence score,
 which can be injected into the LLM prompt so the model has strong semantic
 priors for naming entities and relationships.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,34 +30,87 @@ _BUILTIN_DOMAINS: dict[str, dict[str, Any]] = {
     "entertainment_movies": {
         "description": "Entertainment / movies domain: movies, actors, directors, reviews.",
         "keywords": {
-            "movie", "movies", "film", "actor", "actress", "director",
-            "acted_in", "directed", "produced", "reviewed", "wrote",
-            "title", "released", "tagline", "rating", "roles",
+            "movie",
+            "movies",
+            "film",
+            "actor",
+            "actress",
+            "director",
+            "acted_in",
+            "directed",
+            "produced",
+            "reviewed",
+            "wrote",
+            "title",
+            "released",
+            "tagline",
+            "rating",
+            "roles",
         },
     },
     "social_network": {
         "description": "Social network: users, posts, comments, follows, likes.",
         "keywords": {
-            "user", "users", "post", "posts", "comment", "comments",
-            "follows", "likes", "friend", "friends", "follower",
-            "profile", "feed", "timeline", "message", "messages",
+            "user",
+            "users",
+            "post",
+            "posts",
+            "comment",
+            "comments",
+            "follows",
+            "likes",
+            "friend",
+            "friends",
+            "follower",
+            "profile",
+            "feed",
+            "timeline",
+            "message",
+            "messages",
         },
     },
     "ecommerce": {
         "description": "E-commerce: customers, orders, products, categories, suppliers.",
         "keywords": {
-            "customer", "customers", "order", "orders", "product", "products",
-            "category", "categories", "supplier", "suppliers", "cart",
-            "purchased", "ordered", "shipped", "price", "quantity",
-            "sku", "inventory", "catalog",
+            "customer",
+            "customers",
+            "order",
+            "orders",
+            "product",
+            "products",
+            "category",
+            "categories",
+            "supplier",
+            "suppliers",
+            "cart",
+            "purchased",
+            "ordered",
+            "shipped",
+            "price",
+            "quantity",
+            "sku",
+            "inventory",
+            "catalog",
         },
     },
     "graphrag": {
         "description": "Graph RAG (retrieval-augmented generation): documents, chunks, entities, mentions.",
         "keywords": {
-            "chunk", "chunks", "document", "documents", "entity", "entities",
-            "mention", "mentions", "embedding", "vector", "graphrag",
-            "community", "communities", "source", "text_unit",
+            "chunk",
+            "chunks",
+            "document",
+            "documents",
+            "entity",
+            "entities",
+            "mention",
+            "mentions",
+            "embedding",
+            "vector",
+            "graphrag",
+            "community",
+            "communities",
+            "source",
+            "text_unit",
         },
     },
 }
@@ -65,6 +119,7 @@ _BUILTIN_DOMAINS: dict[str, dict[str, Any]] = {
 @dataclass
 class DomainHint:
     """Result of domain detection."""
+
     domain: str
     description: str
     confidence: float

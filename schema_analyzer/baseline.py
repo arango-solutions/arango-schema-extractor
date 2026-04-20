@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .conceptual import ConceptualSchema
-from .defaults import MIN_TYPE_FIELD_DISTINCT_VALUES, UNRESOLVED_ENDPOINT
+from .defaults import UNRESOLVED_ENDPOINT
 from .mapping import PhysicalMapping
 from .snapshot import (
     _pick_best_type_field,
@@ -75,9 +75,7 @@ def _resolve_endpoints(
     return from_ent, to_ent
 
 
-def _resolve_single_entity(
-    cols: list[str], collection_to_entities: dict[str, list[str]]
-) -> str:
+def _resolve_single_entity(cols: list[str], collection_to_entities: dict[str, list[str]]) -> str:
     """Map a list of collections to a single entity type if unambiguous."""
     if not cols:
         return UNRESOLVED_ENDPOINT
@@ -131,9 +129,7 @@ def _build_index_lookup(col: dict[str, Any]) -> dict[str, dict[str, Any]]:
             if len(fields) > 1:
                 entry["compound"] = [str(x) for x in fields]
                 entry["positionInCompound"] = i
-            if f not in lookup:
-                lookup[f] = entry
-            elif is_unique and not lookup[f].get("unique"):
+            if f not in lookup or is_unique and not lookup[f].get("unique"):
                 lookup[f] = entry
     return lookup
 

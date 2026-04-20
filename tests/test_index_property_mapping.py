@@ -1,7 +1,6 @@
 """Tests for index extraction and property-level physical mapping in baseline inference."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from schema_analyzer.baseline import (
     _build_index_lookup,
@@ -11,8 +10,8 @@ from schema_analyzer.baseline import (
     infer_baseline_from_snapshot,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────────
+
 
 def _col_with_indexes(indexes: list[dict], fields: list[str] | None = None) -> dict:
     """Minimal collection dict with indexes and optional observed fields."""
@@ -28,17 +27,22 @@ def _col_with_indexes(indexes: list[dict], fields: list[str] | None = None) -> d
 
 # ── _build_index_lookup ───────────────────────────────────────────────
 
+
 class TestBuildIndexLookup:
     def test_skips_primary_index(self):
-        col = _col_with_indexes([
-            {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False},
-        ])
+        col = _col_with_indexes(
+            [
+                {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False},
+            ]
+        )
         assert _build_index_lookup(col) == {}
 
     def test_persistent_index_single_field(self):
-        col = _col_with_indexes([
-            {"type": "persistent", "fields": ["email"], "unique": True, "sparse": False, "name": "idx_email"},
-        ])
+        col = _col_with_indexes(
+            [
+                {"type": "persistent", "fields": ["email"], "unique": True, "sparse": False, "name": "idx_email"},
+            ]
+        )
         lookup = _build_index_lookup(col)
         assert "email" in lookup
         assert lookup["email"]["indexType"] == "persistent"
@@ -46,9 +50,11 @@ class TestBuildIndexLookup:
         assert "compound" not in lookup["email"]
 
     def test_compound_index(self):
-        col = _col_with_indexes([
-            {"type": "persistent", "fields": ["tenantId", "accountId"], "unique": True, "sparse": False},
-        ])
+        col = _col_with_indexes(
+            [
+                {"type": "persistent", "fields": ["tenantId", "accountId"], "unique": True, "sparse": False},
+            ]
+        )
         lookup = _build_index_lookup(col)
         assert "tenantId" in lookup
         assert lookup["tenantId"]["compound"] == ["tenantId", "accountId"]
@@ -57,10 +63,12 @@ class TestBuildIndexLookup:
         assert lookup["accountId"]["positionInCompound"] == 1
 
     def test_unique_index_wins_over_non_unique(self):
-        col = _col_with_indexes([
-            {"type": "persistent", "fields": ["email"], "unique": False, "sparse": False},
-            {"type": "persistent", "fields": ["email"], "unique": True, "sparse": False},
-        ])
+        col = _col_with_indexes(
+            [
+                {"type": "persistent", "fields": ["email"], "unique": False, "sparse": False},
+                {"type": "persistent", "fields": ["email"], "unique": True, "sparse": False},
+            ]
+        )
         lookup = _build_index_lookup(col)
         assert lookup["email"]["unique"] is True
 
@@ -71,12 +79,15 @@ class TestBuildIndexLookup:
 
 # ── _extract_indexes_for_mapping ──────────────────────────────────────
 
+
 class TestExtractIndexesForMapping:
     def test_excludes_primary(self):
-        col = _col_with_indexes([
-            {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False, "name": "primary"},
-            {"type": "persistent", "fields": ["name"], "unique": False, "sparse": False, "name": "idx_name"},
-        ])
+        col = _col_with_indexes(
+            [
+                {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False, "name": "primary"},
+                {"type": "persistent", "fields": ["name"], "unique": False, "sparse": False, "name": "idx_name"},
+            ]
+        )
         result = _extract_indexes_for_mapping(col)
         assert len(result) == 1
         assert result[0]["type"] == "persistent"
@@ -85,9 +96,11 @@ class TestExtractIndexesForMapping:
         assert "unique" not in result[0]
 
     def test_includes_unique_and_sparse_flags(self):
-        col = _col_with_indexes([
-            {"type": "persistent", "fields": ["email"], "unique": True, "sparse": True, "name": "idx_email"},
-        ])
+        col = _col_with_indexes(
+            [
+                {"type": "persistent", "fields": ["email"], "unique": True, "sparse": True, "name": "idx_email"},
+            ]
+        )
         result = _extract_indexes_for_mapping(col)
         assert result[0]["unique"] is True
         assert result[0]["sparse"] is True
@@ -98,6 +111,7 @@ class TestExtractIndexesForMapping:
 
 
 # ── _extract_properties with index info ───────────────────────────────
+
 
 class TestExtractPropertiesWithIndexes:
     def test_marks_indexed_field(self):
@@ -130,6 +144,7 @@ class TestExtractPropertiesWithIndexes:
 
 # ── _build_property_mapping ───────────────────────────────────────────
 
+
 class TestBuildPropertyMapping:
     def test_basic_mapping(self):
         props = [
@@ -153,6 +168,7 @@ class TestBuildPropertyMapping:
 
 # ── Full baseline: indexes and properties in physical mapping ─────────
 
+
 class TestBaselineIndexMapping:
     def test_pg_entity_gets_indexes_in_mapping(self):
         snapshot = {
@@ -164,8 +180,20 @@ class TestBaselineIndexMapping:
                     "inferred_entity_type": "Movie",
                     "indexes": [
                         {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False, "name": "primary"},
-                        {"type": "persistent", "fields": ["title"], "unique": False, "sparse": False, "name": "idx_title"},
-                        {"type": "persistent", "fields": ["released"], "unique": False, "sparse": False, "name": "idx_released"},
+                        {
+                            "type": "persistent",
+                            "fields": ["title"],
+                            "unique": False,
+                            "sparse": False,
+                            "name": "idx_title",
+                        },  # noqa: E501
+                        {
+                            "type": "persistent",
+                            "fields": ["released"],
+                            "unique": False,
+                            "sparse": False,
+                            "name": "idx_released",
+                        },  # noqa: E501
                     ],
                     "observed_fields": {"fields": ["title", "released", "tagline"]},
                 },
@@ -217,7 +245,13 @@ class TestBaselineIndexMapping:
                     "inferred_relationship_type": "ACTED_IN",
                     "indexes": [
                         {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False},
-                        {"type": "persistent", "fields": ["roles"], "unique": False, "sparse": False, "name": "idx_roles"},
+                        {
+                            "type": "persistent",
+                            "fields": ["roles"],
+                            "unique": False,
+                            "sparse": False,
+                            "name": "idx_roles",
+                        },  # noqa: E501
                     ],
                     "observed_fields": {"fields": ["roles"]},
                 },
@@ -246,7 +280,13 @@ class TestBaselineIndexMapping:
                     },
                     "indexes": [
                         {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False},
-                        {"type": "persistent", "fields": ["name"], "unique": False, "sparse": False, "name": "idx_name"},
+                        {
+                            "type": "persistent",
+                            "fields": ["name"],
+                            "unique": False,
+                            "sparse": False,
+                            "name": "idx_name",
+                        },  # noqa: E501
                     ],
                     "observed_fields": {
                         "by_type": {
@@ -308,7 +348,13 @@ class TestBaselineIndexMapping:
                     "inferred_entity_type": "Account",
                     "indexes": [
                         {"type": "primary", "fields": ["_key"], "unique": True, "sparse": False},
-                        {"type": "persistent", "fields": ["tenantId", "accountId"], "unique": True, "sparse": False, "name": "idx_tenant_account"},
+                        {
+                            "type": "persistent",
+                            "fields": ["tenantId", "accountId"],
+                            "unique": True,
+                            "sparse": False,
+                            "name": "idx_tenant_account",
+                        },  # noqa: E501
                     ],
                     "observed_fields": {"fields": ["tenantId", "accountId", "status"]},
                 },

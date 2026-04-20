@@ -9,6 +9,7 @@ Two layers:
   LLM provider that returns a deliberately incomplete physical mapping
   (acceptance criterion #6).
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,8 @@ from schema_analyzer.reconcile import (
     reconcile_physical_mapping,
 )
 
-
 # ── collections_referenced_by_mapping ────────────────────────────────────
+
 
 def test_collections_referenced_by_mapping_covers_entities_and_relationships() -> None:
     pm = {
@@ -39,12 +40,16 @@ def test_collections_referenced_by_mapping_covers_entities_and_relationships() -
 def test_collections_referenced_by_mapping_handles_empty_and_garbage() -> None:
     assert collections_referenced_by_mapping({}) == set()
     assert collections_referenced_by_mapping({"entities": None, "relationships": 42}) == set()
-    assert collections_referenced_by_mapping(
-        {"entities": {"X": "not a dict"}, "relationships": {"Y": {"noCollectionKey": True}}}
-    ) == set()
+    assert (
+        collections_referenced_by_mapping(
+            {"entities": {"X": "not a dict"}, "relationships": {"Y": {"noCollectionKey": True}}}
+        )
+        == set()
+    )
 
 
 # ── reconcile_physical_mapping (unit) ─────────────────────────────────────
+
 
 def _minimal_snapshot(*collections: dict) -> dict:
     return {"collections": list(collections), "graphs": []}
@@ -174,6 +179,7 @@ def test_reconcile_is_idempotent_on_second_call() -> None:
 
 # ── analyzer end-to-end (acceptance criterion #6) ────────────────────────
 
+
 class _FakeProvider:
     def __init__(self, text: str) -> None:
         self._text = text
@@ -217,10 +223,7 @@ def _llm_payload_with_seven_of_ten() -> str:
     """LLM-style response emitting only 7 of 10 collections."""
     payload = {
         "conceptualSchema": {
-            "entities": [
-                {"name": f"Col{i:02d}", "labels": [f"Col{i:02d}"], "properties": []}
-                for i in range(7)
-            ],
+            "entities": [{"name": f"Col{i:02d}", "labels": [f"Col{i:02d}"], "properties": []} for i in range(7)],
             "relationships": [],
             "properties": [],
         },
@@ -253,9 +256,7 @@ def test_analyzer_reconciles_when_llm_omits_collections(monkeypatch) -> None:
     monkeypatch.setattr(analyzer_mod, "create_provider", _fake_create_provider)
 
     analyzer = AgenticSchemaAnalyzer(llm_provider="openai", api_key="k", model="m")
-    res = analyzer.analyze_physical_schema(
-        _FakeDBWithTenCollections(), sample_limit_per_collection=0, use_cache=False
-    )
+    res = analyzer.analyze_physical_schema(_FakeDBWithTenCollections(), sample_limit_per_collection=0, use_cache=False)
 
     pm = res.physical_mapping
     covered = collections_referenced_by_mapping(pm)
@@ -289,16 +290,12 @@ def test_analyzer_omits_reconciliation_when_llm_coverage_is_complete(monkeypatch
     complete_payload = {
         "conceptualSchema": {
             "entities": [{"name": "User", "labels": ["User"], "properties": []}],
-            "relationships": [
-                {"type": "FOLLOWS", "fromEntity": "User", "toEntity": "User", "properties": []}
-            ],
+            "relationships": [{"type": "FOLLOWS", "fromEntity": "User", "toEntity": "User", "properties": []}],
             "properties": [],
         },
         "physicalMapping": {
             "entities": {"User": {"style": "COLLECTION", "collectionName": "users"}},
-            "relationships": {
-                "FOLLOWS": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "follows"}
-            },
+            "relationships": {"FOLLOWS": {"style": "DEDICATED_COLLECTION", "edgeCollectionName": "follows"}},
         },
         "metadata": {
             "confidence": 0.9,
@@ -331,9 +328,7 @@ def test_baseline_only_path_does_not_attach_reconciliation(monkeypatch) -> None:
     monkeypatch.setattr(analyzer_mod, "create_provider", _fake_create_provider)
 
     analyzer = AgenticSchemaAnalyzer(llm_provider="openai", api_key="k", model="m")
-    res = analyzer.analyze_physical_schema(
-        _FakeDBWithTenCollections(), sample_limit_per_collection=0, use_cache=False
-    )
+    res = analyzer.analyze_physical_schema(_FakeDBWithTenCollections(), sample_limit_per_collection=0, use_cache=False)
 
     assert res.metadata.reconciliation is None
     assert res.metadata.used_baseline is True
@@ -341,9 +336,7 @@ def test_baseline_only_path_does_not_attach_reconciliation(monkeypatch) -> None:
 
 def test_no_llm_provider_path_does_not_attach_reconciliation() -> None:
     analyzer = AgenticSchemaAnalyzer()  # no provider
-    res = analyzer.analyze_physical_schema(
-        _FakeDBWithTenCollections(), sample_limit_per_collection=0, use_cache=False
-    )
+    res = analyzer.analyze_physical_schema(_FakeDBWithTenCollections(), sample_limit_per_collection=0, use_cache=False)
 
     assert res.metadata.reconciliation is None
     assert res.metadata.used_baseline is True

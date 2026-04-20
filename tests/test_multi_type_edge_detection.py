@@ -8,6 +8,7 @@ entries with controlled cardinality/coverage profiles, and Change B
 (one mapping entry per distinct ``typeValue``) via a
 ``infer_baseline_from_snapshot`` end-to-end assertion.
 """
+
 from __future__ import annotations
 
 from schema_analyzer.baseline import infer_baseline_from_snapshot
@@ -33,6 +34,7 @@ def _edge_entry(
 
 
 # ── AC1: per-type emission of genuine multi-type edges ───────────────────
+
 
 def test_multi_type_edge_emits_one_entry_per_type_value() -> None:
     snapshot = {
@@ -85,6 +87,7 @@ def test_multi_type_edge_emits_one_entry_per_type_value() -> None:
 
 # ── AC2: discriminator detection broadened past CANDIDATE_TYPE_KEYS ───────
 
+
 def test_non_allowlisted_discriminator_field_is_still_detected() -> None:
     """
     Field name ``category`` is not in CANDIDATE_TYPE_KEYS, but its value
@@ -106,6 +109,7 @@ def test_non_allowlisted_discriminator_field_is_still_detected() -> None:
 
 
 # ── AC3: dedicated edge with no discriminator is not misclassified ────────
+
 
 def test_dedicated_edge_with_no_discriminator_is_not_generic() -> None:
     entry = _edge_entry(
@@ -134,6 +138,7 @@ def test_dedicated_edge_with_redundant_relation_field_is_not_generic() -> None:
 
 # ── AC4: high-cardinality ID-like fields are rejected ─────────────────────
 
+
 def test_id_like_field_with_many_distinct_values_is_rejected() -> None:
     """
     A field with 1000 distinct values across 1000 edges looks like an ID,
@@ -144,9 +149,7 @@ def test_id_like_field_with_many_distinct_values_is_rejected() -> None:
         name="edges",
         count=1000,
         candidate_type_fields=["tag"],
-        value_counts={
-            "tag": [{"value": f"v{i}", "count": 1} for i in range(64)]
-        },
+        value_counts={"tag": [{"value": f"v{i}", "count": 1} for i in range(64)]},
     )
     assert _pick_best_type_field(entry, is_edge=True) is None
 

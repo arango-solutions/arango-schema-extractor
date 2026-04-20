@@ -13,12 +13,6 @@ if TYPE_CHECKING:
 from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
-from .domain_detect import DomainHint, detect_domain
-from .reconcile import reconcile_physical_mapping
-from .statistics import (
-    STATISTICS_STATUS_SKIPPED_NO_DB,
-    compute_statistics,
-)
 from .defaults import (
     CONFIDENCE_BASE,
     CONFIDENCE_FLOOR,
@@ -30,10 +24,16 @@ from .defaults import (
     MAX_REPAIR_ATTEMPTS,
     MIN_LLM_BUDGET_MS,
 )
+from .domain_detect import DomainHint, detect_domain
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .providers import create_provider, get_default_model, get_provider_env_var
+from .reconcile import reconcile_physical_mapping
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
+from .statistics import (
+    STATISTICS_STATUS_SKIPPED_NO_DB,
+    compute_statistics,
+)
 from .types import AnalysisMetadata, AnalysisResult, now_iso
 from .utils import analysis_cache_storage_key, stable_dumps
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
@@ -81,8 +81,8 @@ def _build_prompt(snapshot: dict[str, Any], *, domain_hint: DomainHint | None = 
     return (
         "You will be given an ArangoDB physical schema snapshot JSON.\n"
         "Your job: infer a conceptual schema and a conceptual→physical mapping.\n\n"
-        + domain_block +
-        "Return ONLY a single JSON object with EXACTLY these top-level keys:\n"
+        + domain_block
+        + "Return ONLY a single JSON object with EXACTLY these top-level keys:\n"
         "- conceptualSchema\n"
         "- physicalMapping\n"
         "- metadata\n\n"
@@ -616,9 +616,7 @@ class AgenticSchemaAnalyzer:
             reconciliation=data.get("metadata", {}).get("reconciliation")
             if isinstance(data.get("metadata"), dict)
             else None,
-            statistics=data.get("metadata", {}).get("statistics")
-            if isinstance(data.get("metadata"), dict)
-            else None,
+            statistics=data.get("metadata", {}).get("statistics") if isinstance(data.get("metadata"), dict) else None,
             statistics_status=data.get("metadata", {}).get("statistics_status")
             if isinstance(data.get("metadata"), dict)
             else None,

@@ -17,6 +17,7 @@ Exported surface:
 * :func:`collections_referenced_by_mapping` — helper exposed for tests and
   downstream diagnostics.
 """
+
 from __future__ import annotations
 
 from typing import Any

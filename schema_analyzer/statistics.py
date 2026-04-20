@@ -23,6 +23,7 @@ Bounded AQL cost by design:
 A 100-collection / 1_000-relationship schema completes well inside the
 issue's 2-second target against a 100 k-row DB.
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,7 +45,7 @@ SELECTIVITY_ROUND: int = 6
 
 
 def compute_statistics(
-    db: "StandardDatabase | None",
+    db: StandardDatabase | None,
     snapshot: dict[str, Any],
     physical_mapping: dict[str, Any],
     conceptual_schema: dict[str, Any] | None = None,
@@ -212,7 +213,7 @@ def _endpoint_map_from_conceptual(
     return out
 
 
-def _safe_collection_length(db: "StandardDatabase", name: str) -> int | None:
+def _safe_collection_length(db: StandardDatabase, name: str) -> int | None:
     try:
         cursor = db.aql.execute("RETURN LENGTH(@@c)", bind_vars={"@c": name})
         for row in cursor:
@@ -223,7 +224,7 @@ def _safe_collection_length(db: "StandardDatabase", name: str) -> int | None:
 
 
 def _safe_filtered_count(
-    db: "StandardDatabase",
+    db: StandardDatabase,
     collection: str,
     type_field: Any,
     type_value: Any,
@@ -240,8 +241,7 @@ def _safe_filtered_count(
         return None
     try:
         cursor = db.aql.execute(
-            "FOR d IN @@c FILTER d[@field] == @val "
-            "COLLECT WITH COUNT INTO c RETURN c",
+            "FOR d IN @@c FILTER d[@field] == @val COLLECT WITH COUNT INTO c RETURN c",
             bind_vars={"@c": collection, "field": type_field, "val": type_value},
         )
         for row in cursor:

@@ -45,9 +45,7 @@ def _pg_snapshot():
                 "type": "document",
                 "inferred_entity_type": "Person",
                 "observed_fields": {"fields": ["name", "age"]},
-                "indexes": [
-                    {"type": "persistent", "fields": ["name"], "unique": True, "sparse": False}
-                ],
+                "indexes": [{"type": "persistent", "fields": ["name"], "unique": True, "sparse": False}],
             },
             {
                 "name": "acted_in",
@@ -92,9 +90,7 @@ def test_baseline_generic_edge_uses_edge_collection_name() -> None:
                 "name": "edges",
                 "type": "edge",
                 "candidate_type_fields": ["relation"],
-                "sample_field_value_counts": {
-                    "relation": [{"value": "KNOWS", "count": 2}]
-                },
+                "sample_field_value_counts": {"relation": [{"value": "KNOWS", "count": 2}]},
             }
         ],
         "graphs": [],
@@ -143,9 +139,7 @@ def test_schema_rejects_property_with_physical_field_name() -> None:
                 "P": {
                     "style": "COLLECTION",
                     "collectionName": "p",
-                    "properties": {
-                        "name": {"physicalFieldName": "name"}
-                    },
+                    "properties": {"name": {"physicalFieldName": "name"}},
                 }
             },
             "relationships": {},
@@ -167,11 +161,7 @@ def test_external_schema_file_matches_inline_schema() -> None:
     stay in lock-step — both the property-level ``field`` rename and the
     relationship-level ``collectionName`` ban depend on this."""
     schema_path = (
-        Path(__file__).resolve().parents[1]
-        / "schema_analyzer"
-        / "tool_contract"
-        / "v1"
-        / "response.schema.json"
+        Path(__file__).resolve().parents[1] / "schema_analyzer" / "tool_contract" / "v1" / "response.schema.json"
     )
     ext = json.loads(schema_path.read_text())
     # Spot-check: the property items now require "field"
