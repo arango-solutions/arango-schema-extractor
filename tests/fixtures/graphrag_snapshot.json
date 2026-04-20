@@ -11,10 +11,10 @@
         { "type": "persistent", "fields": ["documentId"], "unique": false, "sparse": false, "name": "chunks_documentId" },
         { "type": "primary", "fields": ["_key"], "unique": true, "sparse": false, "name": "primary" }
       ],
-      "candidate_type_field_counts": { "type": 1 },
       "candidate_type_fields": ["type"],
+      "inferred_entity_type": "Chunk",
       "sample_field_value_counts": { "type": [{ "value": "chunk", "count": 1 }] },
-      "inferred_entity_type": "Chunk"
+      "observed_fields": { "fields": ["type"] }
     },
     {
       "name": "documents",
@@ -25,10 +25,10 @@
         { "type": "persistent", "fields": ["source"], "unique": false, "sparse": false, "name": "documents_source" },
         { "type": "primary", "fields": ["_key"], "unique": true, "sparse": false, "name": "primary" }
       ],
-      "candidate_type_field_counts": {},
       "candidate_type_fields": [],
+      "inferred_entity_type": "Document",
       "sample_field_value_counts": {},
-      "inferred_entity_type": "Document"
+      "observed_fields": { "fields": [] }
     },
     {
       "name": "entities",
@@ -40,14 +40,14 @@
         { "type": "persistent", "fields": ["type"], "unique": false, "sparse": false, "name": "entities_type" },
         { "type": "primary", "fields": ["_key"], "unique": true, "sparse": false, "name": "primary" }
       ],
-      "candidate_type_field_counts": { "kind": 1, "labels": 1, "type": 1 },
-      "candidate_type_fields": ["kind", "labels", "type"],
+      "candidate_type_fields": ["type", "labels", "kind"],
+      "inferred_entity_type": "Entity",
       "sample_field_value_counts": {
-        "kind": [{ "value": "person", "count": 1 }],
-        "labels": [{ "value": "Entity", "count": 1 }],
-        "type": [{ "value": "Person", "count": 1 }]
+        "type": [{ "value": "Person", "count": 1 }],
+        "labels": [{ "value": ["Entity"], "count": 1 }],
+        "kind": [{ "value": "person", "count": 1 }]
       },
-      "inferred_entity_type": "Entity"
+      "observed_fields": { "fields": ["kind", "labels", "type"] }
     },
     {
       "name": "mentions",
@@ -57,13 +57,14 @@
       "indexes": [
         { "type": "primary", "fields": ["_key"], "unique": true, "sparse": false, "name": "primary" }
       ],
-      "candidate_type_field_counts": { "relType": 1, "relation": 1 },
-      "candidate_type_fields": ["relType", "relation"],
+      "candidate_type_fields": ["relation", "relType"],
+      "inferred_relationship_type": "MENTIONS",
       "sample_field_value_counts": {
-        "relType": [{ "value": "MENTIONS", "count": 1 }],
-        "relation": [{ "value": "mentions", "count": 1 }]
+        "relation": [{ "value": "mentions", "count": 1 }],
+        "relType": [{ "value": "MENTIONS", "count": 1 }]
       },
-      "inferred_relationship_type": "MENTIONS"
+      "edge_endpoints": { "from_collections": [], "to_collections": [] },
+      "observed_fields": { "fields": ["relType", "relation"] }
     }
   ],
   "graphs": [
@@ -79,4 +80,3 @@
     }
   ]
 }
-

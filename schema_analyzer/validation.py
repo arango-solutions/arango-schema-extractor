@@ -55,6 +55,35 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                         "required": ["style"],
                         "properties": {
                             "style": {"type": "string", "enum": ["COLLECTION", "LABEL"]},
+                            "collectionName": {"type": "string"},
+                            "typeField": {"type": "string"},
+                            "typeValue": {"type": "string"},
+                            "indexes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["type", "fields"],
+                                    "properties": {
+                                        "type": {"type": "string"},
+                                        "fields": {"type": "array", "items": {"type": "string"}},
+                                        "unique": {"type": "boolean"},
+                                        "sparse": {"type": "boolean"},
+                                        "name": {"type": "string"},
+                                    },
+                                },
+                            },
+                            "properties": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "required": ["physicalFieldName"],
+                                    "properties": {
+                                        "physicalFieldName": {"type": "string"},
+                                        "indexed": {"type": "boolean"},
+                                        "unique": {"type": "boolean"},
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -65,6 +94,36 @@ ANALYSIS_OUTPUT_SCHEMA: dict[str, Any] = {
                         "required": ["style"],
                         "properties": {
                             "style": {"type": "string", "enum": ["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]},
+                            "edgeCollectionName": {"type": "string"},
+                            "collectionName": {"type": "string"},
+                            "typeField": {"type": "string"},
+                            "typeValue": {"type": "string"},
+                            "indexes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["type", "fields"],
+                                    "properties": {
+                                        "type": {"type": "string"},
+                                        "fields": {"type": "array", "items": {"type": "string"}},
+                                        "unique": {"type": "boolean"},
+                                        "sparse": {"type": "boolean"},
+                                        "name": {"type": "string"},
+                                    },
+                                },
+                            },
+                            "properties": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "required": ["physicalFieldName"],
+                                    "properties": {
+                                        "physicalFieldName": {"type": "string"},
+                                        "indexed": {"type": "boolean"},
+                                        "unique": {"type": "boolean"},
+                                    },
+                                },
+                            },
                         },
                     },
                 },

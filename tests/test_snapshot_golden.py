@@ -43,15 +43,60 @@ class FakeDB:
             def __init__(self, outer):
                 self._outer = outer
 
-            def execute(self, query, bind_vars):
-                name = bind_vars.get("@c")
+            def execute(self, query, bind_vars=None):
+                bind_vars = bind_vars or {}
+                name = bind_vars.get("@c") or bind_vars.get("@ec")
+                samples = self._outer._samples.get(name) or []
+
+                if "LIMIT 1 RETURN d" in query:
+                    return iter(samples[:1])
+
+                if "COLLECT val = d[@field]" in query:
+                    field = bind_vars.get("field", "")
+                    agg: dict[str, dict] = {}
+                    for s in samples:
+                        val = s.get(field)
+                        if val is None:
+                            continue
+                        k = str(val)
+                        if k not in agg:
+                            agg[k] = {"value": val, "count": 0}
+                        agg[k]["count"] += 1
+                    items = sorted(agg.values(), key=lambda x: (-x["count"], str(x["value"])))
+                    return iter(items[: bind_vars.get("top", 20)])
+
+                if "RETURN ATTRIBUTES" in query:
+                    field = bind_vars.get("field")
+                    val = bind_vars.get("val")
+                    result = []
+                    for s in samples:
+                        if field and val is not None and s.get(field) != val:
+                            continue
+                        result.append(list(s.keys()))
+                    return iter(result[: bind_vars.get("lim", 10)])
+
+                if "PARSE_IDENTIFIER" in query:
+                    seen: set[tuple[str, str]] = set()
+                    result = []
+                    for s in samples:
+                        fr = str(s.get("_from", ""))
+                        to = str(s.get("_to", ""))
+                        if "/" in fr and "/" in to:
+                            pair = (fr.split("/")[0], to.split("/")[0])
+                            if pair not in seen:
+                                seen.add(pair)
+                                result.append({"fromCollection": pair[0], "toCollection": pair[1]})
+                    return iter(result)
+
+                if "DOCUMENT(e._from)" in query:
+                    return iter([])
+
                 limit = bind_vars.get("limit", 0)
-                return iter((self._outer._samples.get(name) or [])[:limit])
+                return iter(samples[:limit])
 
         self.aql = AQL(self)
 
     def collections(self):
-        # mimic python-arango: dict name->collection
         return dict(self._collections)
 
     def graphs(self):

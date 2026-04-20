@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
-from .defaults import SAMPLE_VALUE_TOP_K
+from .defaults import MIN_TYPE_FIELD_DISTINCT_VALUES, SAMPLE_VALUE_TOP_K
 from .utils import pascal_case, sha256_hex, singularize, stable_dumps
+
+logger = logging.getLogger(__name__)
 
 CANDIDATE_TYPE_KEYS: list[str] = [
     "type",
@@ -19,13 +22,18 @@ CANDIDATE_TYPE_KEYS: list[str] = [
     "relType",
 ]
 
+_SYSTEM_FIELDS = frozenset({"_key", "_id", "_rev", "_from", "_to"})
+_PROPERTY_SAMPLE_LIMIT = 10
+
+PREFERRED_DOC_TYPE_FIELDS: list[str] = ["type", "_type", "kind", "entityType", "label"]
+PREFERRED_EDGE_TYPE_FIELDS: list[str] = ["relation", "relType", "type"]
+
 
 def infer_entity_type_from_collection_name(collection_name: str) -> str:
     return pascal_case(singularize(collection_name))
 
 
 def infer_relationship_type_from_collection_name(collection_name: str) -> str:
-    # Edge collections in generator use rel_type.lower() which may contain underscores already.
     s = collection_name.replace("-", "_")
     return s.upper()
 
@@ -37,7 +45,6 @@ def _detect_candidate_type_fields(sample: dict[str, Any]) -> list[str]:
 
 
 def _iter_scalar_values(v: Any):
-    # Yield scalar/string-ish values from a field.
     if v is None:
         return
     if isinstance(v, (str, int, float, bool)):
@@ -48,6 +55,297 @@ def _iter_scalar_values(v: Any):
             if isinstance(x, (str, int, float, bool)):
                 yield x
         return
+
+
+def _pick_best_type_field(
+    entry: dict[str, Any], *, is_edge: bool = False
+) -> str | None:
+    """Pick the best type field from snapshot stats (shared between snapshot and baseline).
+
+    For edge collections with **exactly one** distinct type value, the field is
+    accepted as a discriminator only when that value differs from the
+    collection-name-derived relationship type.  This distinguishes genuine
+    single-type generic edges (``edges`` with ``type = "FOLLOWS"``) from
+    dedicated PG edges that carry a redundant metadata field (``mentions``
+    with ``relation = "mentions"``).
+    """
+    candidates = entry.get("candidate_type_fields") or []
+    value_counts = entry.get("sample_field_value_counts") or {}
+    preferred = PREFERRED_EDGE_TYPE_FIELDS if is_edge else PREFERRED_DOC_TYPE_FIELDS
+    ordered = [c for c in preferred if c in candidates] + [c for c in candidates if c not in preferred]
+
+    best = None
+    best_n = 0
+    for f in ordered:
+        items = value_counts.get(f)
+        if not isinstance(items, list):
+            continue
+        n = len({str(it["value"]) for it in items if isinstance(it, dict) and "value" in it})
+        if n > best_n:
+            best = f
+            best_n = n
+
+    if best_n >= MIN_TYPE_FIELD_DISTINCT_VALUES:
+        return best
+
+    if is_edge and best_n == 1 and best is not None:
+        items = value_counts.get(best, [])
+        single_val = str(items[0]["value"]).strip().upper().replace("-", "_") if items else ""
+        col_name = str(entry.get("name", "")).strip().upper().replace("-", "_")
+        derived = infer_relationship_type_from_collection_name(
+            entry.get("name", "")
+        )
+        if single_val and single_val != col_name and single_val != derived:
+            return best
+
+    return None
+
+
+def _type_values_for_field(entry: dict[str, Any], field: str) -> list[str]:
+    """Extract sorted distinct type values for a field from snapshot stats."""
+    items = (entry.get("sample_field_value_counts") or {}).get(field)
+    if not isinstance(items, list):
+        return []
+    return sorted({str(it["value"]).strip() for it in items if isinstance(it, dict) and "value" in it and str(it["value"]).strip()})
+
+
+def _detect_type_fields_via_collect(
+    db: StandardDatabase,
+    collection_name: str,
+) -> tuple[list[str], dict[str, list[dict[str, Any]]]]:
+    """
+    Detect type discriminator fields using AQL COLLECT for accurate counting.
+    Unlike LIMIT-based sampling, this scans all documents and finds every distinct value.
+    """
+    try:
+        cursor = db.aql.execute(
+            "FOR d IN @@c LIMIT 1 RETURN d",
+            bind_vars={"@c": collection_name},
+        )
+        samples = list(cursor)
+    except Exception:
+        return [], {}
+
+    if not samples:
+        return [], {}
+
+    sample = samples[0] if isinstance(samples[0], dict) else {}
+    candidates = _detect_candidate_type_fields(sample)
+    if not candidates:
+        return [], {}
+
+    value_counts: dict[str, list[dict[str, Any]]] = {}
+    for key in candidates:
+        try:
+            cursor = db.aql.execute(
+                "FOR d IN @@c "
+                "COLLECT val = d[@field] WITH COUNT INTO cnt "
+                "FILTER val != null "
+                "SORT cnt DESC LIMIT @top "
+                "RETURN {value: val, count: cnt}",
+                bind_vars={"@c": collection_name, "field": key, "top": SAMPLE_VALUE_TOP_K},
+            )
+            items = list(cursor)
+            if items:
+                value_counts[key] = items
+        except Exception:
+            continue
+
+    return candidates, value_counts
+
+
+def _detect_observed_fields(
+    db: StandardDatabase,
+    collection_name: str,
+    *,
+    type_field: str | None = None,
+    type_values: list[str] | None = None,
+    is_edge: bool = False,
+) -> dict[str, Any]:
+    """
+    Detect property fields for a collection by sampling document attributes.
+    For type-discriminated collections, detects per type value.
+    """
+    exclude = set(_SYSTEM_FIELDS)
+    if type_field:
+        exclude.add(type_field)
+        exclude.add("labels")
+
+    if type_field and type_values:
+        result: dict[str, list[str]] = {}
+        for tv in type_values:
+            try:
+                cursor = db.aql.execute(
+                    "FOR d IN @@c FILTER d[@field] == @val "
+                    "LIMIT @lim RETURN ATTRIBUTES(d)",
+                    bind_vars={
+                        "@c": collection_name,
+                        "field": type_field,
+                        "val": tv,
+                        "lim": _PROPERTY_SAMPLE_LIMIT,
+                    },
+                )
+                keys: set[str] = set()
+                for attr_list in cursor:
+                    if isinstance(attr_list, list):
+                        keys.update(k for k in attr_list if k not in exclude)
+                result[str(tv)] = sorted(keys)
+            except Exception:
+                continue
+        return {"by_type": result}
+    else:
+        try:
+            cursor = db.aql.execute(
+                "FOR d IN @@c LIMIT @lim RETURN ATTRIBUTES(d)",
+                bind_vars={"@c": collection_name, "lim": _PROPERTY_SAMPLE_LIMIT},
+            )
+            keys_all: set[str] = set()
+            for attr_list in cursor:
+                if isinstance(attr_list, list):
+                    keys_all.update(k for k in attr_list if k not in exclude)
+            return {"fields": sorted(keys_all)}
+        except Exception:
+            return {}
+
+
+def _detect_edge_endpoints(
+    db: StandardDatabase,
+    edge_collection_name: str,
+    *,
+    rel_type_field: str | None = None,
+    doc_type_info: dict[str, tuple[str, set[str]]],
+) -> dict[str, Any]:
+    """
+    Detect _from/_to endpoint collections and resolve entity types.
+
+    Three resolution strategies depending on what's available:
+    1. LPG endpoints (doc collections have type discriminators): DOCUMENT()
+       lookups resolve per-relation entity types.
+    2. Hybrid/PG endpoints with generic edge collection: COLLECT by relation
+       type + from/to collection, then map collection → entity type.
+    3. No relation type field: just report from/to collections.
+    """
+    try:
+        cursor = db.aql.execute(
+            "FOR e IN @@c "
+            "COLLECT fromCol = PARSE_IDENTIFIER(e._from).collection, "
+            "toCol = PARSE_IDENTIFIER(e._to).collection "
+            "RETURN {fromCollection: fromCol, toCollection: toCol}",
+            bind_vars={"@c": edge_collection_name},
+        )
+        all_from_cols: set[str] = set()
+        all_to_cols: set[str] = set()
+        for item in cursor:
+            if isinstance(item, dict):
+                fc = item.get("fromCollection")
+                tc = item.get("toCollection")
+                if fc:
+                    all_from_cols.add(fc)
+                if tc:
+                    all_to_cols.add(tc)
+    except Exception:
+        return {}
+
+    result: dict[str, Any] = {
+        "from_collections": sorted(all_from_cols),
+        "to_collections": sorted(all_to_cols),
+    }
+
+    if not rel_type_field:
+        return result
+
+    any_lpg_endpoint = any(c in doc_type_info for c in all_from_cols | all_to_cols)
+
+    if any_lpg_endpoint:
+        # Strategy 1: LPG — resolve entity types via DOCUMENT() lookups
+        node_type_field = None
+        for col_name in sorted(all_from_cols | all_to_cols):
+            if col_name in doc_type_info:
+                node_type_field = doc_type_info[col_name][0]
+                break
+
+        if node_type_field:
+            try:
+                cursor = db.aql.execute(
+                    "FOR e IN @@ec "
+                    "LET fromDoc = DOCUMENT(e._from) "
+                    "LET toDoc = DOCUMENT(e._to) "
+                    "COLLECT relType = e[@relField], "
+                    "fromType = fromDoc[@nodeTypeField], "
+                    "toType = toDoc[@nodeTypeField] "
+                    "RETURN {relType: relType, fromType: fromType, toType: toType}",
+                    bind_vars={
+                        "@ec": edge_collection_name,
+                        "relField": rel_type_field,
+                        "nodeTypeField": node_type_field,
+                    },
+                )
+                endpoints_by_type: dict[str, dict[str, set[str]]] = {}
+                for item in cursor:
+                    if not isinstance(item, dict):
+                        continue
+                    rt = item.get("relType")
+                    ft = item.get("fromType")
+                    tt = item.get("toType")
+                    if rt:
+                        rt_str = str(rt)
+                        endpoints_by_type.setdefault(rt_str, {"from": set(), "to": set()})
+                        if ft:
+                            endpoints_by_type[rt_str]["from"].add(str(ft))
+                        if tt:
+                            endpoints_by_type[rt_str]["to"].add(str(tt))
+
+                result["entity_types_by_relation"] = {
+                    rt: {
+                        "from_entity_types": sorted(ep["from"]),
+                        "to_entity_types": sorted(ep["to"]),
+                    }
+                    for rt, ep in sorted(endpoints_by_type.items())
+                }
+                return result
+            except Exception as exc:
+                logger.debug("LPG endpoint resolution failed for %s: %s", edge_collection_name, exc)
+
+    # Strategy 2: Hybrid/PG — resolve per-relation endpoints by collection
+    # name (no DOCUMENT() needed, just PARSE_IDENTIFIER).
+    try:
+        cursor = db.aql.execute(
+            "FOR e IN @@ec "
+            "COLLECT relType = e[@relField], "
+            "fromCol = PARSE_IDENTIFIER(e._from).collection, "
+            "toCol = PARSE_IDENTIFIER(e._to).collection "
+            "RETURN {relType: relType, fromCol: fromCol, toCol: toCol}",
+            bind_vars={
+                "@ec": edge_collection_name,
+                "relField": rel_type_field,
+            },
+        )
+        cols_by_type: dict[str, dict[str, set[str]]] = {}
+        for item in cursor:
+            if not isinstance(item, dict):
+                continue
+            rt = item.get("relType")
+            fc = item.get("fromCol")
+            tc = item.get("toCol")
+            if rt:
+                rt_str = str(rt)
+                cols_by_type.setdefault(rt_str, {"from": set(), "to": set()})
+                if fc:
+                    cols_by_type[rt_str]["from"].add(str(fc))
+                if tc:
+                    cols_by_type[rt_str]["to"].add(str(tc))
+
+        result["collections_by_relation"] = {
+            rt: {
+                "from_collections": sorted(ep["from"]),
+                "to_collections": sorted(ep["to"]),
+            }
+            for rt, ep in sorted(cols_by_type.items())
+        }
+    except Exception as exc:
+        logger.debug("Per-relation collection resolution failed for %s: %s", edge_collection_name, exc)
+
+    return result
 
 
 def _omit_samples(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -140,9 +438,12 @@ def snapshot_physical_schema(
 ) -> dict[str, Any]:
     """
     Deterministic physical schema snapshot using python-arango Database.
+
+    Always detects type discriminator fields (via AQL COLLECT) and edge endpoint
+    collections regardless of sample_limit_per_collection, so the baseline can
+    correctly classify PG vs LPG physical model styles.
     """
     collections_info = db.collections()
-    # python-arango may return either a dict(name->collection) or a list of collection info dicts.
     if isinstance(collections_info, dict):
         collections = collections_info
     elif isinstance(collections_info, list):
@@ -154,7 +455,6 @@ def snapshot_physical_schema(
                     try:
                         collections[name] = db.collection(name)
                     except Exception:
-                        # If we can't materialize the collection object, skip it.
                         continue
     else:
         collections = {}
@@ -165,12 +465,10 @@ def snapshot_physical_schema(
         "graphs": [],
     }
 
-    # Avoid importing datetime in hot paths; keep deterministic by caller if desired.
-    # We'll set generated_at at analyzer-level; snapshotter focuses on structure.
-
+    # ── Phase 1: Collect metadata for every collection ──────────────────
+    entries: list[dict[str, Any]] = []
     for name in sorted(collections.keys()):
         col = collections[name]
-        # Skip system collections
         if name.startswith("_"):
             continue
 
@@ -204,11 +502,56 @@ def snapshot_physical_schema(
         else:
             entry["inferred_entity_type"] = infer_entity_type_from_collection_name(name)
 
-        if sample_limit_per_collection and sample_limit_per_collection > 0:
+        entries.append(entry)
+
+    # ── Phase 2: Detect type discriminators for ALL collections (COLLECT) ──
+    for entry in entries:
+        candidates, value_counts = _detect_type_fields_via_collect(db, entry["name"])
+        entry["candidate_type_fields"] = candidates
+        entry["sample_field_value_counts"] = value_counts
+
+    # ── Phase 3: Build doc type field map for edge endpoint resolution ──
+    doc_type_info: dict[str, tuple[str, set[str]]] = {}
+    for entry in entries:
+        if entry["type"] != "document":
+            continue
+        best_field = _pick_best_type_field(entry, is_edge=False)
+        if best_field:
+            values = set(_type_values_for_field(entry, best_field))
+            if values:
+                doc_type_info[entry["name"]] = (best_field, values)
+
+    # ── Phase 4: Detect edge endpoints and property fields ──────────────
+    for entry in entries:
+        is_edge = entry["type"] == "edge"
+        best_field = _pick_best_type_field(entry, is_edge=is_edge)
+        type_values = _type_values_for_field(entry, best_field) if best_field else None
+
+        if is_edge:
+            entry["edge_endpoints"] = _detect_edge_endpoints(
+                db,
+                entry["name"],
+                rel_type_field=best_field,
+                doc_type_info=doc_type_info,
+            )
+
+        entry["observed_fields"] = _detect_observed_fields(
+            db,
+            entry["name"],
+            type_field=best_field,
+            type_values=type_values,
+            is_edge=is_edge,
+        )
+
+    # ── Phase 5: Full document sampling (optional) ──────────────────────
+    if sample_limit_per_collection and sample_limit_per_collection > 0:
+        for entry in entries:
+            cname = entry["name"]
+            is_edge = entry["type"] == "edge"
             try:
                 cursor = db.aql.execute(
                     "FOR d IN @@c LIMIT @limit RETURN d",
-                    bind_vars={"@c": name, "limit": int(sample_limit_per_collection)},
+                    bind_vars={"@c": cname, "limit": int(sample_limit_per_collection)},
                 )
                 samples = list(cursor)
                 if include_samples_in_snapshot:
@@ -216,43 +559,15 @@ def snapshot_physical_schema(
                         entry["sample_edges"] = samples
                     else:
                         entry["sample_documents"] = samples
-
-                field_stats: dict[str, int] = {}
-                value_stats: dict[str, dict[str, int]] = {}
-                for s in samples:
-                    sd = s if isinstance(s, dict) else {}
-                    for f in _detect_candidate_type_fields(sd):
-                        field_stats[f] = field_stats.get(f, 0) + 1
-                        for val in _iter_scalar_values(sd.get(f)):
-                            sval = str(val)
-                            value_stats.setdefault(f, {})
-                            value_stats[f][sval] = value_stats[f].get(sval, 0) + 1
-
-                entry["candidate_type_field_counts"] = {
-                    k: field_stats[k] for k in sorted(field_stats.keys(), key=lambda x: (-field_stats[x], x))
-                }
-                entry["candidate_type_fields"] = list(entry["candidate_type_field_counts"].keys())
-
-                # Summarize observed values for candidate type fields.
-                # Include even when samples are omitted, so the analyzer can infer types.
-                top_k = SAMPLE_VALUE_TOP_K
-                field_value_counts = {}
-                for f in entry["candidate_type_fields"]:
-                    counts = value_stats.get(f, {})
-                    items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:top_k]
-                    if items:
-                        field_value_counts[f] = [{"value": v, "count": c} for v, c in items]
-                entry["sample_field_value_counts"] = field_value_counts
             except Exception as e:
                 entry["sample_error"] = str(e)
 
-        snapshot["collections"].append(entry)
+    snapshot["collections"] = entries
 
-    # Named graphs (best-effort)
+    # ── Named graphs (best-effort) ──────────────────────────────────────
     try:
         graphs = db.graphs()
         snapshot["graphs"] = graphs
-        # Try to fetch deeper properties per graph when possible.
         detailed = []
         if isinstance(graphs, list):
             for g in graphs:
