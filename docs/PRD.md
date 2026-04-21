@@ -366,8 +366,102 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
 
 #### **6.2. Enhanced Pattern Detection**
 - RPT (RDF Topology) detection: `_triples` collections, `rdf:type` edges
-- VCI optimization pattern detection: edge properties that duplicate vertex properties
 - GraphRAG template matching: text chunks + entities + similarity edges
+- **Vertex-Centric Index (VCI) detection.** Identify VCI usage on edge
+  collections and surface it as a first-class signal on the physical
+  mapping (beyond today's per-index `vci=true` flag). Two complementary
+  signals:
+  - **Index-level:** edge collections carrying `persistent` indexes
+    rooted at `_from` / `_to` plus one or more discriminator fields
+    (e.g. `[_from, type]`, `[_to, type, validFrom]`). Report which
+    fields participate, whether the index is `unique` / `sparse`, and
+    classify the access pattern (`out-edge`, `in-edge`, `both`).
+  - **Schema-level:** edge attributes that duplicate properties from
+    their endpoint vertices (denormalisation for VCI lookups). Report
+    the duplicated field, source vertex collection, and duplication
+    fraction. Emit the candidate `VCI` mapping style alongside the
+    underlying `DEDICATED_COLLECTION` / `GENERIC_WITH_TYPE` mapping
+    so consumers (transpilers, planners) can choose the optimised
+    traversal.
+- **Sharding-pattern detection.** Inspect `db.properties()`,
+  per-collection `properties()` (`numberOfShards`, `shardKeys`,
+  `shardingStrategy`, `replicationFactor`,
+  `distributeShardsLike`, `smartGraphAttribute`, `isSmart`,
+  `isDisjoint`, `isSatellite`), and named-graph metadata to classify the
+  deployment style and emit a top-level `metadata.shardingProfile`:
+  - **`OneShard`** — database-level `sharding == "single"` (or every
+    user collection has `numberOfShards == 1` and shares the same
+    `distributeShardsLike` leader). Report the leader collection.
+  - **`SmartGraph`** — named graph with `isSmart == true` and a
+    non-empty `smartGraphAttribute`; vertex collections share the
+    smart attribute as their shard key. Report the smart attribute,
+    member vertex/edge collections, and the named graph(s) that
+    define the smart family.
+  - **`DisjointSmartGraph`** — SmartGraph with `isDisjoint == true`
+    (tenant-sharding pattern: cross-tenant traversal is forbidden by
+    construction). Report the disjoint shard key in addition to the
+    smart attribute, and flag the graph as a tenancy boundary so
+    multitenancy detection (below) can consume it.
+  - **`SatelliteGraph`** — vertex/edge collections with
+    `replicationFactor == "satellite"` (or `isSatellite == true`),
+    typically used for meta-graph / ontology / reference data that
+    must be co-located with every shard. Report which collections are
+    satellites and which named graphs reference them.
+  - **`Sharded` (default)** — none of the above; standard
+    hash-sharded collections. Report `shardKeys` and
+    `numberOfShards` per collection.
+  Detection must be read-only and must not require admin privileges
+  beyond what `snapshot_physical_schema` already needs; missing fields
+  (older ArangoDB versions, restricted users) degrade to `Sharded`
+  with a `metadata.shardingProfileStatus` of `"degraded"` and a
+  human-readable reason.
+- **Multitenancy detection.** Determine whether the physical schema
+  encodes multitenancy and, if so, how. Emit
+  `metadata.multitenancy` with:
+  - `style` ∈ {`none`, `disjoint_smartgraph`, `shard_key`,
+    `discriminator_field`, `collection_per_tenant`,
+    `database_per_tenant`}
+  - `tenantKey` — the property name(s) that identify a tenant
+    (e.g. `tenantId`, `org_id`, `accountId`)
+  - `tenantKeyCollections` — collections in which the tenant key
+    appears, with coverage (`fraction` of documents that carry the
+    key) and cardinality (distinct tenant value count, capped)
+  - `physicalEnforcement` — whether tenancy is enforced by the
+    physical layout (`disjoint_smartgraph`, `shard_key`,
+    `collection_per_tenant`, `database_per_tenant`) or only by
+    convention (`discriminator_field`)
+  - `evidence` — the signals that drove the classification
+    (e.g. shard-key match, smart-attribute match, naming pattern,
+    high-coverage discriminator)
+  Detection layers on the sharding profile above:
+  - **Disjoint SmartGraph multitenancy.** When
+    `shardingProfile.style == "DisjointSmartGraph"`, the smart /
+    disjoint attribute is the tenant key and `physicalEnforcement` is
+    `true`. This is the canonical ArangoDB tenant-sharding pattern.
+  - **Shard-key multitenancy.** When non-disjoint collections share a
+    `shardKeys` value such as `["tenantId"]` (or
+    `distributeShardsLike` follows a leader that does), report the
+    shard key as the tenant key with `physicalEnforcement = true`.
+  - **Discriminator-field multitenancy.** When a property such as
+    `tenantId` / `org_id` / `accountId` appears with high coverage
+    (`≥ MIN_TENANT_FIELD_COVERAGE_FRACTION`) across many collections
+    but is not a shard key, classify as `discriminator_field` with
+    `physicalEnforcement = false` and warn that tenancy is convention
+    only.
+  - **Collection-per-tenant.** When collection naming follows a
+    repeated `<base>__<tenant>` / `<tenant>_<base>` pattern across a
+    consistent set of bases, report the inferred base set, the
+    extracted tenant identifiers, and `physicalEnforcement = true`.
+  - **Database-per-tenant.** Out of scope for a single-database
+    snapshot, but the analyzer should mark the result as
+    `style: "unknown_single_db"` when the snapshot scope is a single
+    database that itself looks tenant-named (e.g. matches a known
+    tenant naming pattern), so a higher-level orchestrator can
+    aggregate across databases.
+  Tunables (e.g. `MIN_TENANT_FIELD_COVERAGE_FRACTION`,
+  `MAX_TENANT_DISTINCT_VALUES`) live in `defaults.py`. Detection must
+  be deterministic and must not depend on LLM output, though the LLM
+  layer may enrich the human-readable description.
 
 #### **6.3. Richer OWL Support**
 - Class hierarchies (`rdfs:subClassOf`)
