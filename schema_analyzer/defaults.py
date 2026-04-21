@@ -48,6 +48,19 @@ MAX_TYPE_VALUE_LENGTH: int = 64
 MAX_BROADENED_TYPE_CANDIDATES: int = 10
 UNRESOLVED_ENDPOINT: str = "Any"
 
+# Tenant-scope annotator (issue #13)
+# Conceptual entity names treated as tenant roots. First match in the
+# tuple that exists in the schema becomes the canonical tenant root.
+TENANT_SCOPE_ROOT_NAMES: tuple[str, ...] = ("Tenant",)
+# Regex that identifies a denormalised tenant-reference field on
+# non-root entities. Default matches TENANT_ID, tenant_id, tenantId,
+# tenant_key, TENANT-ID. Compiled case-insensitively at use site.
+TENANT_SCOPE_FIELD_REGEX: str = r"^tenant[_-]?(id|key)$"
+# BFS depth cap when deciding whether a non-denorm entity is reachable
+# from the tenant root over the conceptual relationship graph. Used to
+# distinguish "tenant_scoped via traversal" from "global metadata".
+TENANT_SCOPE_MAX_HOPS: int = 5
+
 # Eval harness
 DEFAULT_EVAL_SAMPLE_LIMIT: int = 3
 DEFAULT_EVAL_SCALE: int = 5

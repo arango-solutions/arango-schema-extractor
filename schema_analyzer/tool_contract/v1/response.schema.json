@@ -134,7 +134,8 @@
                         "unique": { "type": "boolean" }
                       }
                     }
-                  }
+                  },
+                  "tenantScope": { "$ref": "#/$defs/TenantScope" }
                 }
               }
             },
@@ -201,8 +202,57 @@
             },
             "detectedPatterns": { "type": "array", "items": { "type": "string" } },
             "warnings": { "type": "array", "items": { "type": "string" } },
-            "assumptions": { "type": "array", "items": { "type": "string" } }
+            "assumptions": { "type": "array", "items": { "type": "string" } },
+            "tenantScopeReport": {
+              "description": "Summary of per-entity tenant-scope classification applied to physicalMapping.entities[*].tenantScope. Null (or absent) when no tenant-root entity was detected — single-tenant graphs leave it null. Mirrors the null-default convention used by sibling diagnostic blocks (reconciliation, statistics).",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": ["tenantEntity"],
+                  "properties": {
+                    "tenantEntity": { "type": "string", "minLength": 1 },
+                    "denormScopedCount": { "type": "integer", "minimum": 0 },
+                    "traversalScopedCount": { "type": "integer", "minimum": 0 },
+                    "globalCount": { "type": "integer", "minimum": 0 },
+                    "tenantFieldRegex": { "type": "string" },
+                    "discovery": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "fromExplicitAnnotation": { "type": "integer", "minimum": 0 },
+                        "fromDenormFieldHeuristic": { "type": "integer", "minimum": 0 },
+                        "fromTraversalReachability": { "type": "integer", "minimum": 0 }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
           }
+        }
+      }
+    },
+
+    "TenantScope": {
+      "type": "object",
+      "description": "Per-entity tenant-isolation classification. Tells downstream consumers (transpilers, NL\u2192Cypher pipelines) how to enforce tenant boundaries when querying this collection. Operators may set this explicitly to override heuristic detection; explicit annotations always win.",
+      "additionalProperties": false,
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["tenant_root", "tenant_scoped", "global"],
+          "description": "tenant_root: anchors the tenant hierarchy (typically the Tenant collection itself). tenant_scoped: belongs to a single tenant; query MUST constrain to one tenant either via the denormalised tenantField or via traversal from the tenant root. global: cross-tenant reference data (e.g. CVE, AppVersion); queries MUST NOT include any tenant filter."
+        },
+        "tenantField": {
+          "type": "string",
+          "description": "When role is tenant_scoped and the entity carries a denormalised tenant reference, the field name (e.g. TENANT_ID). Consumers should filter on this field with the tenant key for efficient single-collection queries. Omit for traversal-only scoped entities."
+        },
+        "tenantEntity": {
+          "type": "string",
+          "description": "Conceptual name of the tenant root for this scoping (typically Tenant). Required when role is tenant_scoped; omitted for tenant_root and global."
         }
       }
     },

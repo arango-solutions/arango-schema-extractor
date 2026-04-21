@@ -34,6 +34,7 @@ from .statistics import (
     STATISTICS_STATUS_SKIPPED_NO_DB,
     compute_statistics,
 )
+from .tenant_scope import annotate_tenant_scope
 from .types import AnalysisMetadata, AnalysisResult, now_iso
 from .utils import analysis_cache_storage_key, stable_dumps
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
@@ -194,6 +195,31 @@ def _apply_reconciliation(
         "Reconciliation: backfilled %d missing collection(s) from baseline: %s",
         len(backfilled),
         backfilled,
+    )
+
+
+def _apply_tenant_scope(data: dict[str, Any]) -> None:
+    """Annotate ``physicalMapping.entities[*].tenantScope`` and stamp a
+    ``metadata.tenantScopeReport`` summary.
+
+    No-op (and no metadata block) when no tenant root is detected,
+    matching :func:`_apply_reconciliation`'s contract for graphs that
+    don't need the feature. Always safe to call after reconciliation.
+    """
+    summary = annotate_tenant_scope(data)
+    if summary is None:
+        return
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+    meta["tenantScopeReport"] = summary
+    logger.info(
+        "Tenant scope: root=%s denorm=%d traversal=%d global=%d",
+        summary.get("tenantEntity"),
+        summary.get("denormScopedCount", 0),
+        summary.get("traversalScopedCount", 0),
+        summary.get("globalCount", 0),
     )
 
 
@@ -484,6 +510,7 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
         return self._build_result(
@@ -553,6 +580,7 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
         return self._build_result(
@@ -618,6 +646,9 @@ class AgenticSchemaAnalyzer:
             else None,
             statistics=data.get("metadata", {}).get("statistics") if isinstance(data.get("metadata"), dict) else None,
             statistics_status=data.get("metadata", {}).get("statistics_status")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            tenant_scope_report=data.get("metadata", {}).get("tenantScopeReport")
             if isinstance(data.get("metadata"), dict)
             else None,
         )

@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.4.0
+
+Additive, non-breaking. Existing single-tenant exports continue to
+validate against the v1 contract unchanged.
+
+### New features
+
+- **#13 tenant-scope annotations.** The analyzer now classifies every
+  entity in the physical mapping by its tenant role and stamps the
+  result onto `physicalMapping.entities[*].tenantScope`. Three roles
+  are recognised:
+
+  - `tenant_root` — the entity that anchors the tenant hierarchy
+    (default name: `Tenant`; configurable via
+    `SCHEMA_ANALYZER_TENANT_ROOT_NAMES`).
+  - `tenant_scoped` — belongs to a single tenant. Carries
+    `tenantField` when the entity has a denormalised tenant-reference
+    column (default regex: `^tenant[_-]?(id|key)$`, configurable via
+    `SCHEMA_ANALYZER_TENANT_FIELD_REGEX`); omits it when the entity
+    is only reachable from the tenant root via traversal.
+  - `global` — cross-tenant reference data (e.g. `Cve`,
+    `AppVersion`). Consumers MUST NOT add a tenant filter to queries
+    against these collections.
+
+  Detection is deterministic and depends only on the conceptual
+  schema + physical mapping (no LLM call). It runs after
+  reconciliation so backfilled entities are also classified, and
+  before validation so the response-schema check covers the new
+  field. Operators can pre-stamp `tenantScope` on any entry to
+  override the heuristic — explicit annotations always win. BFS depth
+  for traversal-only classification is capped at
+  `TENANT_SCOPE_MAX_HOPS` (default 5; env-var overridable).
+
+  A per-run summary lands in `metadata.tenantScopeReport` with
+  `tenantEntity`, `denormScopedCount`, `traversalScopedCount`,
+  `globalCount`, `tenantFieldRegex`, and a `discovery` breakdown by
+  source (explicit / denorm-field / traversal).
+
+  No-op (and no metadata block) when no tenant root is detected, so
+  single-tenant graphs are byte-identical to their `0.3.0` exports.
+
+### Tool contract additions (additive)
+
+- `physicalMapping.entities[*].tenantScope` is now defined as an
+  optional object with `role` (enum: `tenant_root` /
+  `tenant_scoped` / `global`), optional `tenantField`, and optional
+  `tenantEntity`. See the new `TenantScope` `$def` in
+  `tool_contract/v1/response.schema.json`.
+- `metadata.tenantScopeReport` is now defined as an optional object
+  carrying the per-run classification summary.
+
+### Configuration
+
+New tunables in `defaults.py`:
+
+- `TENANT_SCOPE_ROOT_NAMES = ("Tenant",)`
+- `TENANT_SCOPE_FIELD_REGEX = r"^tenant[_-]?(id|key)$"`
+- `TENANT_SCOPE_MAX_HOPS = 5`
+
+Each is overridable at runtime via the matching
+`SCHEMA_ANALYZER_TENANT_*` environment variable.
+
 ## 0.3.0
 
 First PyPI release. Consolidates the quality + contract work originally

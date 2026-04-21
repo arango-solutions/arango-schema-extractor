@@ -60,3 +60,109 @@ def test_analyze_with_mock_provider_parses_json(monkeypatch):
     res = analyzer.analyze_physical_schema(FakeDB(), sample_limit_per_collection=0)
     assert res.metadata.confidence == 0.8
     assert res.metadata.review_required is False
+
+
+# ── tenant-scope wire-through (issue #13) ────────────────────────────────
+
+
+class _MultiTenantFakeDB:
+    """Fake DB whose collections look like a tiny multi-tenant graph:
+    ``Tenant`` (root), ``Device`` (denorm-scoped via ``TENANT_ID``),
+    ``Cve`` (global metadata)."""
+
+    def collections(self):
+        class FakeCol:
+            def __init__(self, col_type):
+                self._type = col_type
+
+            def properties(self):
+                return {"type": self._type}
+
+            def count(self):
+                return 0
+
+            def indexes(self):
+                return []
+
+        return {"Tenant": FakeCol(2), "Device": FakeCol(2), "Cve": FakeCol(2)}
+
+    def graphs(self):
+        return []
+
+
+def test_analyze_emits_tenant_scope_annotations_and_report(monkeypatch):
+    """End-to-end check that ``_apply_tenant_scope`` is wired into
+    both the analyzer pipeline and the export contract.
+
+    We feed a multi-tenant LLM payload (Tenant root, denorm-scoped
+    Device with TENANT_ID, global Cve) and assert that the annotator
+    stamped the expected ``tenantScope`` blocks under
+    ``physicalMapping.entities[*]`` and folded a
+    ``tenantScopeReport`` summary into ``metadata``. This protects
+    against regressions where ``_apply_tenant_scope`` accidentally
+    gets removed from one of the two pipeline call sites or ordered
+    after ``_apply_statistics`` (which would clobber the metadata
+    block on some payload shapes).
+    """
+    payload = {
+        "conceptualSchema": {
+            "entities": [
+                {"name": "Tenant", "labels": ["Tenant"], "properties": []},
+                {
+                    "name": "Device",
+                    "labels": ["Device"],
+                    "properties": [{"name": "TENANT_ID"}, {"name": "name"}],
+                },
+                {
+                    "name": "Cve",
+                    "labels": ["Cve"],
+                    "properties": [{"name": "CVE_ID"}],
+                },
+            ],
+            "relationships": [],
+            "properties": [],
+        },
+        "physicalMapping": {
+            "entities": {
+                "Tenant": {"style": "COLLECTION", "collectionName": "Tenant"},
+                "Device": {"style": "COLLECTION", "collectionName": "Device"},
+                "Cve": {"style": "COLLECTION", "collectionName": "Cve"},
+            },
+            "relationships": {},
+        },
+        "metadata": {
+            "confidence": 0.9,
+            "timestamp": "2026-01-01T00:00:00Z",
+            "analyzedCollectionCounts": {
+                "documentCollections": 3,
+                "edgeCollections": 0,
+            },
+            "detectedPatterns": [],
+        },
+    }
+    text = json.dumps(payload)
+
+    import schema_analyzer.analyzer as analyzer_mod
+
+    def _fake_create_provider(name, *, api_key):
+        return FakeProvider(text)
+
+    monkeypatch.setattr(analyzer_mod, "create_provider", _fake_create_provider)
+
+    analyzer = AgenticSchemaAnalyzer(llm_provider="openai", api_key="k", model="m")
+    res = analyzer.analyze_physical_schema(_MultiTenantFakeDB(), sample_limit_per_collection=0, use_cache=False)
+
+    pm = res.physical_mapping["entities"]
+    assert pm["Tenant"]["tenantScope"] == {"role": "tenant_root"}
+    assert pm["Device"]["tenantScope"] == {
+        "role": "tenant_scoped",
+        "tenantEntity": "Tenant",
+        "tenantField": "TENANT_ID",
+    }
+    assert pm["Cve"]["tenantScope"] == {"role": "global"}
+
+    report = res.metadata.tenant_scope_report
+    assert report is not None
+    assert report["tenantEntity"] == "Tenant"
+    assert report["denormScopedCount"] == 1
+    assert report["globalCount"] == 1

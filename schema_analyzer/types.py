@@ -45,6 +45,12 @@ class AnalysisMetadata(BaseModel):
     # absent.
     statistics: dict[str, Any] | None = Field(default=None)
     statistics_status: str | None = Field(default=None, alias="statisticsStatus")
+    # Populated by the tenant-scope annotator (issue #13) when a
+    # ``Tenant`` (or configured tenant root) entity is detected. Carries
+    # the per-run summary that mirrors the per-entity ``tenantScope``
+    # blocks now stamped under ``physicalMapping.entities[*]``. Absent
+    # on single-tenant graphs.
+    tenant_scope_report: dict[str, Any] | None = Field(default=None, alias="tenantScopeReport")
 
 
 class AnalysisResult(BaseModel):
