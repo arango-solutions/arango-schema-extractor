@@ -692,6 +692,10 @@ def _summarize_graph_props(props: Any) -> dict[str, Any]:
     Extract stable, high-signal graph details:
     - edgeDefinitions (collection, from[], to[])
     - orphanCollections
+    - SmartGraph topology flags needed by sharding-profile
+      classification: isSmart, isDisjoint, smartGraphAttribute,
+      isSatellite (only when present on the source — older ArangoDB
+      versions omit them).
     """
     if not isinstance(props, dict):
         return {"raw": props}
@@ -713,6 +717,36 @@ def _summarize_graph_props(props: Any) -> dict[str, Any]:
         out["edge_definitions"] = sorted(defs, key=lambda x: str(x.get("collection") or ""))
     if "orphanCollections" in props and isinstance(props["orphanCollections"], list):
         out["orphan_collections"] = sorted(list(props["orphanCollections"]))
+    for key in ("isSmart", "isDisjoint", "smartGraphAttribute", "isSatellite"):
+        if key in props:
+            out[key] = props[key]
+    return out
+
+
+def _collect_database_properties(db: Any) -> dict[str, Any]:
+    """Capture the database-level properties needed by the
+    sharding-profile classifier. Best-effort: any probe that throws
+    is silently skipped and the missing keys degrade the classifier
+    to ``Sharded`` / ``degraded`` at classification time.
+
+    Returns a dict with whichever of ``name``, ``sharding``,
+    ``replicationFactor``, ``writeConcern`` could be retrieved.
+    """
+    out: dict[str, Any] = {}
+    try:
+        name = getattr(db, "name", None)
+        if isinstance(name, str) and name:
+            out["name"] = name
+    except Exception:  # pragma: no cover — defensive
+        pass
+    try:
+        props = db.properties() if hasattr(db, "properties") else None
+    except Exception:
+        props = None
+    if isinstance(props, dict):
+        for key in ("sharding", "replicationFactor", "writeConcern"):
+            if key in props and props[key] is not None:
+                out[key] = props[key]
     return out
 
 
@@ -749,6 +783,7 @@ def snapshot_physical_schema(
         "generated_at": None,
         "collections": [],
         "graphs": [],
+        "database": _collect_database_properties(db),
     }
 
     # ── Phase 1: Collect metadata for every collection ──────────────────

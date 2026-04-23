@@ -1,6 +1,7 @@
 {
   "version": 1,
   "generated_at": null,
+  "database": {},
   "collections": [
     {
       "name": "chunks",

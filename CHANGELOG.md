@@ -1,5 +1,80 @@
 # Changelog
 
+## Unreleased
+
+Additive, non-breaking. Existing exports continue to validate against
+the v1 contract unchanged.
+
+### New features
+
+- **Sharding-profile classification (`metadata.shardingProfile`).**
+  First landing of the PRD §6.2 "Sharding-pattern detection" bullet
+  (spec committed in `b3d4744`). The analyzer now classifies every
+  analyzed database into one of five exclusive deployment styles, once
+  per analysis:
+
+  - `OneShard` — database-level `sharding == "single"`. Single-shard
+    databases where cross-collection traversal never crosses DBServers.
+    Carries an `oneShardLeader` hint when every user collection shares
+    a consistent `distributeShardsLike` leader.
+  - `DisjointSmartGraph` — at least one named graph is both
+    `isSmart == true` and `isDisjoint == true`. The canonical
+    ArangoDB multi-tenant pattern: traversal across the disjoint
+    attribute is forbidden by the storage layer.
+  - `SmartGraph` — at least one smart (but non-disjoint) named graph.
+    Vertex collections share the smart attribute as their shard key;
+    edge traversals are locality-aware.
+  - `SatelliteGraph` — every user collection is a satellite (typical
+    of meta-graph / ontology / reference databases).
+  - `Sharded` — fall-through default for everything else; standard
+    hash-sharded collections.
+
+  Classification is deterministic and snapshot-only — no new DB round
+  trip. Missing fields (older ArangoDB versions, restricted users
+  whose `db.properties()` returned partial data) degrade to `Sharded`
+  with `shardingProfile.status == "degraded"` and a human-readable
+  `statusReason` instead of raising.
+
+  The block carries per-graph evidence (`graphs[*].{isSmart,
+  isDisjoint, smartGraphAttribute, vertexCollections,
+  edgeCollections}`), per-collection evidence
+  (`collections[*].{kind, numberOfShards, shardKeys,
+  replicationFactor, distributeShardsLike, smartGraphAttribute,
+  isDisjoint, graphName}`), the database-level properties the
+  classifier used (`database.{sharding, replicationFactor,
+  writeConcern}`), and a `collectionKindCounts` summary so downstream
+  consumers can branch on the breakdown without iterating the full
+  collections map.
+
+  `metadata.shardingProfileStatus` mirrors `shardingProfile.status`
+  for callers that only need the `"ok"` / `"degraded"` bit, matching
+  the existing `metadata.statisticsStatus` convention.
+
+- **Snapshot now carries `database` block and SmartGraph flags on
+  graphs.** `snapshot["database"]` captures `{name, sharding,
+  replicationFactor, writeConcern}` from `db.properties()`;
+  `snapshot["graphs_detailed"][*]` now also carries `isSmart`,
+  `isDisjoint`, `smartGraphAttribute`, `isSatellite` when the server
+  exposes them. Unlocks the sharding-profile classifier without
+  another DB probe; backwards-compatible (older consumers simply
+  ignore the new keys).
+
+### Backward compatibility
+
+- The `database` block defaults to `{}` when `db.properties()` fails
+  or is unavailable. Snapshot JSON schema is permissive
+  (`additionalProperties: true`), so no consumer needs to change.
+- `metadata.shardingProfile` is optional in the v1 response schema;
+  pre-Unreleased cached analysis results load unchanged.
+- One-time analysis-cache invalidation on upgrade.
+  `fingerprint_physical_schema` hashes the whole snapshot dict, so
+  adding `snapshot["database"]` and the per-graph SmartGraph flags
+  changes every fingerprint exactly once; the first analysis after
+  upgrade re-runs the LLM workflow and then caches normally. This is
+  the standard behaviour whenever a new structural field lands — it
+  matches the cache-reset behaviour of prior snapshot extensions
+  (e.g. VCI flags in 0.3.0).
+
 ## 0.4.0
 
 Additive, non-breaking. Existing single-tenant exports continue to

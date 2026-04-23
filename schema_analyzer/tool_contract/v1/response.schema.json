@@ -229,10 +229,111 @@
                   }
                 }
               ]
+            },
+            "shardingProfile": { "$ref": "#/$defs/ShardingProfile" },
+            "shardingProfileStatus": {
+              "description": "Mirror of shardingProfile.status for callers that only want to branch on ok/degraded without reading the full block. Absent when shardingProfile is absent (snapshot too minimal to classify).",
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "enum": ["ok", "degraded"] }
+              ]
             }
           }
         }
       }
+    },
+
+    "ShardingProfile": {
+      "description": "Deployment-style classification for the analyzed database. Emitted when snapshot_physical_schema yielded at least one user collection; absent (null) when the snapshot is too minimal to classify. Primary style is exclusive (exactly one of OneShard / DisjointSmartGraph / SmartGraph / SatelliteGraph / Sharded); per-graph and per-collection evidence is always populated so downstream consumers can reason about shard boundaries without re-deriving them.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["style", "status"],
+          "properties": {
+            "style": {
+              "type": "string",
+              "enum": [
+                "OneShard",
+                "DisjointSmartGraph",
+                "SmartGraph",
+                "SatelliteGraph",
+                "Sharded"
+              ]
+            },
+            "status": { "type": "string", "enum": ["ok", "degraded"] },
+            "statusReason": { "type": "string" },
+            "database": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "name": { "type": "string" },
+                "sharding": { "type": "string" },
+                "replicationFactor": { "type": ["integer", "string"] },
+                "writeConcern": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "collectionKindCounts": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "smartgraph": { "type": "integer", "minimum": 0 },
+                "satellite": { "type": "integer", "minimum": 0 },
+                "regular": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "graphs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "isSmart": { "type": "boolean" },
+                  "isDisjoint": { "type": "boolean" },
+                  "isSatellite": { "type": "boolean" },
+                  "smartGraphAttribute": { "type": "string" },
+                  "vertexCollections": { "type": "array", "items": { "type": "string" } },
+                  "edgeCollections": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "satelliteCollections": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "oneShardLeader": { "type": "string" },
+            "collections": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["smartgraph", "satellite", "regular"]
+                  },
+                  "numberOfShards": { "type": "integer", "minimum": 1 },
+                  "shardKeys": { "type": "array", "items": { "type": "string" } },
+                  "shardingStrategy": { "type": "string" },
+                  "replicationFactor": { "type": ["integer", "string"] },
+                  "writeConcern": { "type": "integer", "minimum": 0 },
+                  "minReplicationFactor": { "type": "integer", "minimum": 0 },
+                  "distributeShardsLike": { "type": ["string", "null"] },
+                  "smartGraphAttribute": { "type": "string" },
+                  "isSmart": { "type": "boolean" },
+                  "isDisjoint": { "type": "boolean" },
+                  "isSatellite": { "type": "boolean" },
+                  "graphName": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
 
     "TenantScope": {

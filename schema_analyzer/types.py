@@ -51,6 +51,16 @@ class AnalysisMetadata(BaseModel):
     # blocks now stamped under ``physicalMapping.entities[*]``. Absent
     # on single-tenant graphs.
     tenant_scope_report: dict[str, Any] | None = Field(default=None, alias="tenantScopeReport")
+    # Populated by the sharding-profile classifier (PRD §6.2 bullet 3)
+    # once per analysis. Carries the primary style classification
+    # (``OneShard`` / ``DisjointSmartGraph`` / ``SmartGraph`` /
+    # ``SatelliteGraph`` / ``Sharded``) plus per-graph and
+    # per-collection evidence. ``sharding_profile_status`` mirrors the
+    # inner ``status`` field (``"ok"`` / ``"degraded"``) so callers can
+    # branch on a single top-level key. Both absent when the snapshot
+    # is too minimal to classify (no collections).
+    sharding_profile: dict[str, Any] | None = Field(default=None, alias="shardingProfile")
+    sharding_profile_status: str | None = Field(default=None, alias="shardingProfileStatus")
 
 
 class AnalysisResult(BaseModel):

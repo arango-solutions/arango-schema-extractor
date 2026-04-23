@@ -29,6 +29,7 @@ from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .providers import create_provider, get_default_model, get_provider_env_var
 from .reconcile import reconcile_physical_mapping
+from .sharding_profile import classify_sharding_profile
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .statistics import (
     STATISTICS_STATUS_SKIPPED_NO_DB,
@@ -196,6 +197,30 @@ def _apply_reconciliation(
         len(backfilled),
         backfilled,
     )
+
+
+def _apply_sharding_profile(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Classify the snapshot by sharding pattern and stamp
+    ``metadata.shardingProfile`` + ``metadata.shardingProfileStatus``.
+
+    Always safe to call — a snapshot too minimal to classify (no
+    collections, pre-0.x snapshot without the ``database`` block, etc.)
+    results in a no-op; nothing is written. Matches the contract used
+    by :func:`_apply_reconciliation` and :func:`_apply_tenant_scope`
+    for features that don't apply to every graph.
+    """
+    profile = classify_sharding_profile(snapshot)
+    if profile is None:
+        return
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+    meta["shardingProfile"] = profile
+    meta["shardingProfileStatus"] = profile.get("status")
 
 
 def _apply_tenant_scope(data: dict[str, Any]) -> None:
@@ -404,6 +429,7 @@ class AgenticSchemaAnalyzer:
                 "conceptualSchema": baseline.get("conceptualSchema", {}),
                 "metadata": {},
             }
+            _apply_sharding_profile(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             meta = AnalysisMetadata(
                 confidence=0.1,
@@ -421,6 +447,8 @@ class AgenticSchemaAnalyzer:
                 detected_domain_confidence=domain_hint.confidence if domain_hint else None,
                 statistics=stats_holder["metadata"].get("statistics"),
                 statistics_status=stats_holder["metadata"].get("statistics_status"),
+                sharding_profile=stats_holder["metadata"].get("shardingProfile"),
+                sharding_profile_status=stats_holder["metadata"].get("shardingProfileStatus"),
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
@@ -510,6 +538,7 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_sharding_profile(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -580,6 +609,7 @@ class AgenticSchemaAnalyzer:
             errors.append(str(e))
             repair_attempts = 0
 
+        _apply_sharding_profile(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -649,6 +679,12 @@ class AgenticSchemaAnalyzer:
             if isinstance(data.get("metadata"), dict)
             else None,
             tenant_scope_report=data.get("metadata", {}).get("tenantScopeReport")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            sharding_profile=data.get("metadata", {}).get("shardingProfile")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            sharding_profile_status=data.get("metadata", {}).get("shardingProfileStatus")
             if isinstance(data.get("metadata"), dict)
             else None,
         )
