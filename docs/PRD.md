@@ -462,6 +462,38 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
   `MAX_TENANT_DISTINCT_VALUES`) live in `defaults.py`. Detection must
   be deterministic and must not depend on LLM output, though the LLM
   layer may enrich the human-readable description.
+- **Shard-family detection.** Some schemas encode a per-source /
+  per-repository / per-stream dimension by duplicating structurally
+  identical collections keyed on that dimension (e.g.
+  `IBEX_Documents`, `MAROCCHINO_Documents`, `MOR1KX_Documents`,
+  `OR1200_Documents` — four collections, one logical entity from a
+  consumer's perspective). Emit
+  `physicalMapping.shardFamilies[]` grouping these together:
+  - `name` — family label derived from the common suffix (e.g.
+    `"Document"`).
+  - `suffix` — the common name suffix (`"Document"`,
+    `"_Golden_Entities"`, …), ≥ `MIN_SHARD_FAMILY_SUFFIX_LEN`
+    characters, ending on a capital-letter boundary.
+  - `members[]` — one entry per member with
+    `{entity, collectionName, discriminatorValue}`.
+  - `sharedProperties[]` — the property set common to all members.
+  - `discriminator` — `{source: "field", field: "<name>"}` when a
+    matching field (default `repo`, configurable via
+    `SHARD_FAMILY_DISCRIMINATOR_FIELDS`) exists on the member
+    collections; `{source: "collection_prefix"}` otherwise.
+
+  Detection is deterministic: bucket conceptual entities by the hash
+  of their sorted property names; within each bucket, confirm a
+  common suffix of at least `MIN_SHARD_FAMILY_SUFFIX_LEN`. Buckets of
+  size < `MIN_SHARD_FAMILY_SIZE` are skipped. This is explicitly
+  **not** multi-tenancy (structural duplication, not per-customer
+  isolation) and layers independently of `metadata.multitenancy`.
+  Downstream consumers (e.g. NL→Cypher prompt builders) use the
+  family grouping to emit UNION-aware guidance instead of silently
+  picking one member. Tunables
+  (`MIN_SHARD_FAMILY_SIZE`,
+  `MIN_SHARD_FAMILY_SUFFIX_LEN`,
+  `SHARD_FAMILY_DISCRIMINATOR_FIELDS`) live in `defaults.py`.
 
 #### **6.3. Richer OWL Support**
 - Class hierarchies (`rdfs:subClassOf`)
