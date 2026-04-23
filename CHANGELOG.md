@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 Additive, non-breaking. Existing exports continue to validate against
 the v1 contract unchanged.
