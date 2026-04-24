@@ -1,8 +1,26 @@
-# Using OWL for Conceptual Schema - Design Decision
+# Using OWL for Conceptual Schema — Design Decision
+
+> **Status: Adopted.** This document captures the original design rationale
+> for emitting the conceptual schema as OWL. The recommendation has been
+> implemented; the production exporter lives in
+> [`schema_analyzer/owl_export.py`](../schema_analyzer/owl_export.py) and is
+> exposed as `export_conceptual_model_as_owl_turtle(analysis)` and via the
+> `owl` operation of the v1 tool contract.
+>
+> The "Implementation Strategy" section below uses **JavaScript / `rdflib.js`**
+> snippets from an early Node.js prototype. Treat them as illustrative
+> pseudocode for the design choices (TBox vs ABox split, `phys:` annotation
+> properties, JSON-LD progressive enhancement). The shipping implementation is
+> Python and uses string-builder Turtle emission rather than `rdflib`; it does
+> **not** require any of the JavaScript dependencies referenced here.
+>
+> The decision-status block at the end of this document
+> (*Recommended for approval*) is historical — OWL Turtle output has been a
+> first-class artifact since 0.1.0.
 
 ## Executive Summary
 
-**Recommendation**: ✅ **Use OWL (Web Ontology Language) for the conceptual schema**
+**Recommendation**: ✅ **Use OWL (Web Ontology Language) for the conceptual schema** (adopted).
 
 OWL provides significant advantages over a custom schema format and aligns perfectly with our hybrid schema use case.
 

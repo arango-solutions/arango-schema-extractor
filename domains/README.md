@@ -10,10 +10,13 @@ These specs are used by:
 - the **physical schema generator** (to create multiple ArangoDB physical schema variants + sample data)
 - the **integration evaluation harness** (to compare analyzer outputs vs ground truth)
 
-Included domains (v0.1):
+Included domains:
 - `healthcare`
 - `financial_fraud_detection`
 - `insurance`
 - `intelligence`
 - `network_asset_management`
+
+Add a new pack by creating `domains/<name>/domain.json`; the eval harness
+auto-discovers it via `list_domains()`.
 

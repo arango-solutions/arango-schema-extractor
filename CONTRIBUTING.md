@@ -48,17 +48,26 @@ schema_analyzer/
 ├── conceptual.py        # ConceptualSchema dataclass
 ├── defaults.py          # Centralized tunable constants
 ├── docs.py              # Markdown documentation generator
+├── domain_detect.py     # Domain (PG / LPG / hybrid) detection helpers
 ├── errors.py            # SchemaAnalyzerError
 ├── exports.py           # Transpiler export (Cypher)
 ├── mapping.py           # PhysicalMapping with AQL helpers
+├── mcp_server.py        # MCP stdio server (arangodb-schema-analyzer-mcp)
+├── multitenancy.py      # metadata.multitenancy classification
 ├── owl_export.py        # OWL Turtle export
-├── snapshot.py          # Physical schema introspection
-├── tool.py              # Tool contract v1 entrypoint
+├── reconcile.py         # Backfill collections the LLM omitted
+├── shard_families.py    # physicalMapping.shardFamilies grouping
+├── sharding_profile.py  # metadata.shardingProfile classification (0.5.0)
+├── snapshot.py          # Physical schema introspection + fingerprints
+├── statistics.py        # metadata.statistics (counts + cardinality)
+├── tenant_scope.py      # tenantScope annotator (0.4.0)
+├── tool.py              # Tool contract v1 entrypoint (run_tool)
 ├── tool_contract_v1.py  # JSON Schema validation
 ├── types.py             # Pydantic models (AnalysisMetadata, AnalysisResult)
 ├── utils.py             # Shared utilities (pascal_case, sha256, JSON extraction)
 ├── validation.py        # LLM output validation schema
 ├── workflow.py          # Generate → validate → repair loop
+├── py.typed             # PEP 561 marker
 ├── eval/                # Evaluation harness
 │   ├── domain_loader.py # Load domain specs from domains/
 │   ├── generator.py     # Physical schema generator (PG + LPG variants)
@@ -69,7 +78,7 @@ schema_analyzer/
 │   ├── openai_provider.py
 │   ├── anthropic_provider.py
 │   └── openrouter_provider.py
-└── tool_contract/v1/    # Bundled JSON Schema files
+└── tool_contract/v1/    # Bundled JSON Schema files (request / response)
 ```
 
 ## Guidelines

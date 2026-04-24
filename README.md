@@ -1,10 +1,14 @@
-# arangodb-schema-analyzer (v0.1)
+# arangodb-schema-analyzer
 
 Standalone Python library that analyzes an ArangoDB database's physical schema and produces:
 
 - a **conceptual schema** (entities, relationships, properties)
 - a **conceptual→physical mapping** suitable for transpilers (Cypher, SPARQL, future)
-- **metadata** (confidence, timestamp, analyzed collection counts, detected patterns)
+- **metadata** (confidence, timestamp, analyzed collection counts, detected patterns,
+  per-entity tenant scope, deployment-style sharding profile)
+
+Current release: see [`CHANGELOG.md`](CHANGELOG.md). The version is the single
+source of truth in [`pyproject.toml`](pyproject.toml).
 
 ## Install
 
@@ -93,9 +97,12 @@ Run analysis quality benchmarks against domain packs:
 arangodb-schema-analyzer eval \
   --provider openai \
   --model gpt-4o-mini \
-  --report eval_report.json \
-  --baseline eval_baseline.json
+  --report eval_report.json
 ```
+
+Pass `--baseline <prior-report.json>` to diff a new run against an earlier
+report (the baseline file is whatever a previous `--report` produced; no
+baseline ships in the repo).
 
 Options: `--url`, `--user`, `--password`, `--database`, `--domains`, `--sample-limit`, `--timeout-ms`, `--scale`, `--no-cleanup`.
 
@@ -103,20 +110,51 @@ Domains included: `healthcare`, `financial_fraud_detection`, `insurance`, `intel
 
 ## Public API
 
-Exports:
+Exports (see `schema_analyzer/__init__.py`):
 
 - `AgenticSchemaAnalyzer` — main analyzer class
 - `ConceptualSchema` — conceptual schema dataclass
 - `PhysicalMapping` — physical mapping dataclass with AQL helpers
 - `generate_schema_docs(analysis)` — Markdown documentation generator
-- `export_mapping(analysis, target)` — transpiler export (v0.1: `cypher`)
+- `export_mapping(analysis, target)` — transpiler export (currently only `cypher`)
 - `export_conceptual_model_as_owl_turtle(analysis)` — OWL Turtle export
 - `register_provider(name, ...)` — register custom LLM providers
 - `list_providers()` — list registered LLM provider names
+- `run_tool(request_dict)` — programmatic entrypoint to the v1 tool contract
+- `fingerprint_physical_schema(snapshot)` — full-snapshot SHA-256 (cache key)
+- `fingerprint_physical_shape(db, *, exclude_collections=None)` — cheap probe
+  that hashes only the collection set + per-collection type + index digests
+- `fingerprint_physical_counts(db, *, exclude_collections=None)` — shape
+  fingerprint combined with per-collection `count()`
+
+## Recent additions
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
+
+- **0.6.0 — Shard-family detection** (`physicalMapping.shardFamilies`)
+  groups conceptual entities that share an identical property set and a
+  common name suffix (the per-source / per-repo collection-duplication
+  pattern), so downstream consumers can emit UNION-aware guidance
+  instead of silently picking one member. Plus **multitenancy classification**
+  (`metadata.multitenancy`) layered on the sharding profile.
+- **0.5.0 — Sharding-profile classification.** Every analysis stamps
+  `metadata.shardingProfile` with one of `OneShard`, `DisjointSmartGraph`,
+  `SmartGraph`, `SatelliteGraph`, or `Sharded`, plus per-graph and
+  per-collection evidence. Snapshot-only, no extra DB round trip.
+- **0.4.0 — Tenant-scope annotations.** Every entity in
+  `physicalMapping.entities[*]` now carries a `tenantScope` block
+  (`tenant_root` / `tenant_scoped` / `global`), with a per-run
+  `metadata.tenantScopeReport` summary. Configurable via
+  `SCHEMA_ANALYZER_TENANT_*` env vars.
+- **0.3.0 — Cheap change-detection probes** (`fingerprint_physical_shape`,
+  `fingerprint_physical_counts`), **statistics block** on
+  `metadata.statistics`, and a **reconciliation step** that backfills any
+  collections the LLM omitted.
 
 ## Configuration
 
-Tunable defaults live in `schema_analyzer/defaults.py`. Key parameters:
+Tunable defaults live in `schema_analyzer/defaults.py` (full list there).
+Selected parameters:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -125,6 +163,10 @@ Tunable defaults live in `schema_analyzer/defaults.py`. Key parameters:
 | `DEFAULT_TIMEOUT_MS` | 60000 | Analysis timeout (ms) |
 | `DEFAULT_REVIEW_THRESHOLD` | 0.6 | Confidence threshold for `review_required` |
 | `DEFAULT_CACHE_TTL_SECONDS` | 86400 | Cache TTL (seconds) |
+| `TENANT_SCOPE_ROOT_NAMES` | `("Tenant",)` | Entity names treated as tenant roots |
+| `TENANT_SCOPE_FIELD_REGEX` | `^tenant[_-]?(id\|key)$` | Denormalised tenant-reference field detector |
+| `MIN_TENANT_FIELD_COVERAGE_FRACTION` | 0.5 | Threshold for `discriminator_field` multitenancy |
+| `MIN_SHARD_FAMILY_SIZE` | 2 | Min members for a shard-family group |
 
 ## Notes
 

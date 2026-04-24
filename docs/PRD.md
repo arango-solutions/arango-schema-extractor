@@ -5,7 +5,7 @@
 **Package**: `arangodb-schema-analyzer` (PyPI)
 **Import**: `schema_analyzer`
 **Language**: Python ≥ 3.10
-**Version**: 0.1.0
+**Version**: tracked in `pyproject.toml` (current: 0.6.0; see `CHANGELOG.md`)
 
 **Companion codebase:** **Arango-OntoExtract (AOE)** is developed in the **`ontology_generator`** repository (underscore, not `ontology-generator`). A typical local layout is `~/code/ontology_generator` alongside this repo. Cross-references in this document mean that project.
 
@@ -19,7 +19,9 @@ The system operates as:
 - A **Python library** (`AgenticSchemaAnalyzer`)
 - A **non-interactive CLI tool** (`arangodb-schema-analyzer`) using stdin/stdout JSON per the v1 tool contract
 - An **evaluation harness** for benchmarking analysis quality across domain packs
-- An **optional MCP server** (post–v0.1; see §3.11) that exposes the same operations as MCP tools for AI agents and IDEs
+- An **MCP stdio server** (`arangodb-schema-analyzer-mcp`, ships in the
+  `[mcp]` extra; see §3.11) that exposes the same operations as MCP tools
+  for AI agents and IDEs
 
 **Quality and lineage (directional):** v0.1 ships **metadata confidence**, **review gating**, and **offline eval F1 scores** against domain packs. Broader **ontology-quality metrics** and **temporal provenance** for re-analysis and schema drift are specified in §3.12 and §3.13 to align with the patterns used in **Arango-OntoExtract (AOE)** (`ontology_generator` — multi-signal scoring, health score, extraction run records, and temporal diff).
 
@@ -117,7 +119,7 @@ The system produces multiple output formats:
 |---|---|---|
 | Analysis JSON | `analyze` | Conceptual schema + physical mapping + metadata |
 | Physical Snapshot | `snapshot` | Deterministic physical schema introspection |
-| Export JSON | `export` | Stable JSON for transpiler consumption (v0.1: Cypher) |
+| Export JSON | `export` | Stable JSON for transpiler consumption (currently Cypher) |
 | Markdown Docs | `docs` | Human-readable schema documentation |
 | OWL Turtle | `owl` | Conceptual schema + physical mapping as OWL 2 ontology with `phys:` annotation properties |
 
@@ -177,7 +179,10 @@ The system includes a domain-based evaluation framework:
 - **Secrets:** Prefer env-indirection (`passwordEnvVar`, `apiKeyEnvVar`) in tool parameters; document that inline secrets in MCP payloads inherit the same risks as inline JSON secrets (logs, transcripts).
 - **Errors:** Surface contract-shaped errors (`ok: false`, typed `code`) to the client.
 - **Transports:** Support at least **stdio** for local IDE use; **SSE** (or equivalent) optional for remote agents.
-- **Implementation status:** Not part of v0.1 core deliverables; tracked as integration packaging (separate entrypoint or sibling package acceptable).
+- **Implementation status:** **Shipped.** A stdio MCP server lives in
+  `schema_analyzer/mcp_server.py` and is exposed via the
+  `arangodb-schema-analyzer-mcp` console script (gated by the optional
+  `[mcp]` extra). SSE / remote transports remain future work.
 
 **Reference:** AOE documents a full MCP surface for ontology library and extraction (`ontology_generator` PRD §6.10); this project scopes MCP to **schema reverse-engineering and mapping** only.
 
@@ -227,6 +232,11 @@ Inspired by **AOE** (`ontology_generator`): multi-signal confidence, structural 
 **AOE reference:** `ontology_generator` uses **extraction run** documents (`started_at`, `completed_at`, `model`, `prompt_version`, stats), **temporal versioning** on ontology entities (`created` / `expired` intervals), **point-in-time snapshot** APIs, and **temporal diff** between timestamps (PRD §5.3, §6.5, data model for `extraction_runs`, `quality_history`).
 
 **3.13.1. Minimum viable (target for schema-analyzer)**
+
+> Status: shape + counts fingerprints and snapshot fingerprint shipped in
+> 0.3.0; see CHANGELOG. Run id, ISO timestamps, and provider/model lineage
+> are emitted via `metadata`. Element-level provenance (3.13.2) and OWL
+> diff (3.13.3 final row) remain future work.
 
 | Element | Requirement |
 |---|---|
@@ -358,7 +368,11 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
 
 ---
 
-### **6. Roadmap (Post v0.1)**
+### **6. Roadmap**
+
+> Items below were originally scoped post-0.1. Several have shipped since;
+> each shipped bullet is annotated with the release that introduced it.
+> Unannotated bullets remain future work.
 
 #### **6.1. Additional Mapping Styles**
 - `TRIPLE` — for RDF-style schemas with `_triples` collections and `rdf:type` edges
@@ -383,7 +397,9 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
     underlying `DEDICATED_COLLECTION` / `GENERIC_WITH_TYPE` mapping
     so consumers (transpilers, planners) can choose the optimised
     traversal.
-- **Sharding-pattern detection.** Inspect `db.properties()`,
+- **Sharding-pattern detection.** _Shipped in 0.5.0_ — see
+  `schema_analyzer/sharding_profile.py` and CHANGELOG 0.5.0. Inspects
+  `db.properties()`,
   per-collection `properties()` (`numberOfShards`, `shardKeys`,
   `shardingStrategy`, `replicationFactor`,
   `distributeShardsLike`, `smartGraphAttribute`, `isSmart`,
@@ -415,7 +431,12 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
   (older ArangoDB versions, restricted users) degrade to `Sharded`
   with a `metadata.shardingProfileStatus` of `"degraded"` and a
   human-readable reason.
-- **Multitenancy detection.** Determine whether the physical schema
+- **Multitenancy detection.** _Shipped in 0.6.0_ as
+  `metadata.multitenancy` — see `schema_analyzer/multitenancy.py`.
+  Companion `physicalMapping.entities[*].tenantScope` annotator +
+  `metadata.tenantScopeReport` shipped in 0.4.0
+  (`schema_analyzer/tenant_scope.py`). Determines whether the physical
+  schema
   encodes multitenancy and, if so, how. Emit
   `metadata.multitenancy` with:
   - `style` ∈ {`none`, `disjoint_smartgraph`, `shard_key`,
@@ -462,7 +483,9 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
   `MAX_TENANT_DISTINCT_VALUES`) live in `defaults.py`. Detection must
   be deterministic and must not depend on LLM output, though the LLM
   layer may enrich the human-readable description.
-- **Shard-family detection.** Some schemas encode a per-source /
+- **Shard-family detection.** _Shipped in 0.6.0_ as
+  `physicalMapping.shardFamilies` — see
+  `schema_analyzer/shard_families.py`. Some schemas encode a per-source /
   per-repository / per-stream dimension by duplicating structurally
   identical collections keyed on that dimension (e.g.
   `IBEX_Documents`, `MAROCCHINO_Documents`, `MOR1KX_Documents`,
@@ -525,8 +548,12 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
 - `jsonschema ≥ 4.21.0` — tool contract validation
 
 #### Optional
-- `openai ≥ 1.0.0` — OpenAI provider
-- `anthropic ≥ 0.25.0` — Anthropic provider
+- `openai ≥ 1.0.0` — OpenAI provider (`[openai]` extra)
+- `anthropic ≥ 0.25.0` — Anthropic provider (`[anthropic]` extra)
+- OpenRouter — uses stdlib `urllib`; no extra SDK required (the `[openrouter]`
+  extra exists only for feature discoverability)
+- `mcp ≥ 1.2.0` — MCP stdio server (`[mcp]` extra; enables
+  `arangodb-schema-analyzer-mcp`)
 
 #### Dev
 - `pytest`, `pytest-cov`, `ruff`, `mypy`
