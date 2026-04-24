@@ -27,6 +27,7 @@ from .defaults import (
 from .domain_detect import DomainHint, detect_domain
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
+from .multitenancy import classify_multitenancy
 from .providers import create_provider, get_default_model, get_provider_env_var
 from .reconcile import reconcile_physical_mapping
 from .shard_families import detect_shard_families
@@ -242,6 +243,30 @@ def _apply_shard_families(data: dict[str, Any]) -> None:
     pm["shardFamilies"] = families
 
 
+def _apply_multitenancy(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Classify the snapshot by multitenancy pattern and stamp
+    ``metadata.multitenancy`` + ``metadata.multitenancyStatus``.
+
+    Must run *after* :func:`_apply_sharding_profile` so the
+    disjoint-smartgraph branch can consume the sharding profile.
+    Always safe to call; a no-op when the snapshot has no user
+    collections.
+    """
+    sharding = (data.get("metadata") or {}).get("shardingProfile")
+    block = classify_multitenancy(data, snapshot, sharding_profile=sharding)
+    if block is None:
+        return
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+    meta["multitenancy"] = block
+    meta["multitenancyStatus"] = block.get("status")
+
+
 def _apply_tenant_scope(data: dict[str, Any]) -> None:
     """Annotate ``physicalMapping.entities[*].tenantScope`` and stamp a
     ``metadata.tenantScopeReport`` summary.
@@ -450,6 +475,7 @@ class AgenticSchemaAnalyzer:
             }
             _apply_sharding_profile(stats_holder, snapshot)
             _apply_shard_families(stats_holder)
+            _apply_multitenancy(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             meta = AnalysisMetadata(
                 confidence=0.1,
@@ -469,6 +495,8 @@ class AgenticSchemaAnalyzer:
                 statistics_status=stats_holder["metadata"].get("statistics_status"),
                 sharding_profile=stats_holder["metadata"].get("shardingProfile"),
                 sharding_profile_status=stats_holder["metadata"].get("shardingProfileStatus"),
+                multitenancy=stats_holder["metadata"].get("multitenancy"),
+                multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
@@ -560,6 +588,7 @@ class AgenticSchemaAnalyzer:
 
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
+        _apply_multitenancy(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -632,6 +661,7 @@ class AgenticSchemaAnalyzer:
 
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
+        _apply_multitenancy(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 

@@ -7,6 +7,7 @@ the v1 contract unchanged.
 
 ### New features
 
+
 - **Shard-family detection (`physicalMapping.shardFamilies`).**
   Implements PRD §6.2 bullet 5. A *shard family* groups conceptual
   entities that share an identical property set and a common
@@ -40,7 +41,61 @@ the v1 contract unchanged.
   found no families (consumers can distinguish "didn't run" from "ran,
   found none").
 
+- **Multitenancy classification (`metadata.multitenancy`).**
+  Implements PRD §6.2 bullet 4. The analyzer classifies every database
+  into exactly one of seven exclusive multitenancy styles, layered on
+  top of `metadata.shardingProfile`:
+
+  - `disjoint_smartgraph` — when `shardingProfile.style ==
+    "DisjointSmartGraph"`, the smart / disjoint attribute is the
+    tenant key with `physicalEnforcement = true`.
+  - `shard_key` — at least two non-disjoint user collections share a
+    shard key whose first element looks tenant-ish (`tenantId`,
+    `org_id`, `accountId`, `customerId`, `workspaceId`); the shard key
+    is the tenant key with `physicalEnforcement = true`.
+  - `discriminator_field` — a candidate property (default candidates
+    in `TENANT_DISCRIMINATOR_FIELDS`) is declared by ≥
+    `MIN_TENANT_FIELD_COVERAGE_FRACTION` of analyzed user
+    collections, but is NOT a shard key. `physicalEnforcement = false`
+    — tenancy is enforced by application convention only.
+  - `collection_per_tenant` — collection naming follows a repeated
+    `<base>__<tenant>` (or `<tenant>_<base>`) pattern across at least
+    two tenants and at least one shared base. `physicalEnforcement =
+    true`.
+  - `unknown_single_db` — single-database snapshot whose database name
+    matches a tenant naming pattern. We can't prove
+    `database_per_tenant` from one snapshot alone, so we flag it for
+    a higher-level orchestrator to confirm.
+  - `database_per_tenant` — out of scope for this single-database
+    analyzer; reserved for orchestrator emission.
+  - `none` — no signal triggered (single-tenant database).
+
+  Detection is deterministic, snapshot-only (no DB round-trip beyond
+  the existing snapshot, no LLM call). When per-collection
+  `sample_documents` are present in the snapshot, `discriminator_field`
+  reports per-document coverage and per-sample distinct-value
+  cardinality (capped at `MAX_TENANT_DISTINCT_VALUES`); otherwise it
+  falls back to schema-level binary coverage from
+  `physicalMapping.entities[*].properties`.
+
+  Each block carries:
+
+  - `style` — the exclusive classification.
+  - `status` — `"ok"` or `"degraded"` (the latter when the chosen
+    detector fired but evidence was incomplete, e.g.
+    `DisjointSmartGraph` without an extractable smart attribute).
+  - `physicalEnforcement` — `true` for storage-enforced styles,
+    `false` for `discriminator_field` and `none`.
+  - `tenantKey[]` — property name(s) that identify a tenant.
+  - `tenantKeyCollections[]` — per-collection evidence (only for
+    `shard_key` and `discriminator_field`).
+  - `evidence` — free-form, style-specific signals.
+
+  Mirrored under `metadata.multitenancyStatus` for callers that only
+  want to branch on `ok` / `degraded`.
+
 ### Tunables (`schema_analyzer/defaults.py`)
+
 
 - `MIN_SHARD_FAMILY_SIZE` (default `2`) — minimum members for a family.
 - `MIN_SHARD_FAMILY_SUFFIX_LEN` (default `4`) — minimum suffix length;
@@ -49,7 +104,23 @@ the v1 contract unchanged.
   "stream", "upstream")`) — case-insensitive candidate field names
   probed in order; first one carried by *every* member wins.
 
+
+- `MIN_TENANT_FIELD_COVERAGE_FRACTION` (default `0.5`) — minimum
+  fraction of user collections that must declare a candidate field
+  for the `discriminator_field` style to fire.
+- `MAX_TENANT_DISTINCT_VALUES` (default `50`) — cap on per-collection
+  distinct tenant values reported as evidence.
+- `TENANT_DISCRIMINATOR_FIELDS` — case-insensitive candidate field
+  names probed in order (`tenantId`, `tenant_id`, `TENANT_ID`,
+  `tenant`, `orgId`, `org_id`, `organizationId`, `accountId`,
+  `account_id`, `customerId`, `workspaceId`).
+- `TENANT_COLLECTION_NAMING_PATTERNS` — regexes for the
+  `collection_per_tenant` style.
+- `TENANT_DATABASE_NAMING_PATTERNS` — regexes for the
+  `unknown_single_db` hint.
+
 ### Backward compatibility
+
 
 - `PhysicalMapping.shard_families` is `None` by default. `to_json`
   omits the `shardFamilies` key when `None`, preserving byte-identity
@@ -59,6 +130,14 @@ the v1 contract unchanged.
   is optional).
 - No cache invalidation needed: `physical_fingerprint` is unchanged
   and the new field is purely additive.
+
+
+- Additive only. `metadata.multitenancy` is `None` by default;
+  callers that don't read it see no behavioural change.
+- v1 response schema gains `metadata.multitenancy` and
+  `metadata.multitenancyStatus` (both optional; existing fixtures
+  continue to validate).
+- `physical_fingerprint` unchanged → no cache invalidation needed.
 
 ## 0.5.0
 

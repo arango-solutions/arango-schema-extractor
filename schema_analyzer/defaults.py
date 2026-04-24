@@ -75,6 +75,56 @@ SHARD_FAMILY_DISCRIMINATOR_FIELDS: tuple[str, ...] = (
     "upstream",
 )
 
+# Multitenancy detection (PRD §6.2 bullet 4 — see docs/PRD.md)
+# Threshold for `discriminator_field` style: a candidate property
+# (e.g. ``tenantId``, ``org_id``) is treated as a tenant-discriminator
+# only when it appears in at least this fraction of the analysed
+# user collections. Set conservatively — a one-off ``tenantId`` field
+# on a single audit collection should NOT trigger discriminator-style
+# multitenancy classification.
+MIN_TENANT_FIELD_COVERAGE_FRACTION: float = 0.5
+# Cap on the number of distinct tenant identifiers reported per
+# collection. We only need a small sample for evidence; large
+# tenant pools (thousands of distinct values) would bloat the
+# response and hurt fingerprint stability.
+MAX_TENANT_DISTINCT_VALUES: int = 50
+# Candidate tenant-discriminator property names probed in order
+# (case-insensitive). The first name carried by enough collections
+# wins. Order reflects ArangoDB community convention plus widely-used
+# SaaS naming patterns. Operators can override via
+# ``Analyzer(tenant_discriminator_fields=...)``.
+TENANT_DISCRIMINATOR_FIELDS: tuple[str, ...] = (
+    "tenantId",
+    "tenant_id",
+    "TENANT_ID",
+    "tenant",
+    "orgId",
+    "org_id",
+    "organizationId",
+    "accountId",
+    "account_id",
+    "customerId",
+    "workspaceId",
+)
+# Collection-per-tenant naming pattern (PRD §6.2 bullet 4, case 4).
+# A regex with two named groups: ``base`` (the conceptual base name)
+# and ``tenant`` (the per-tenant discriminator). Both groups must
+# contain at least 2 chars to suppress trivial matches like
+# ``a__b``.
+TENANT_COLLECTION_NAMING_PATTERNS: tuple[str, ...] = (
+    r"^(?P<base>[A-Za-z][A-Za-z0-9]+)__(?P<tenant>[A-Za-z0-9][A-Za-z0-9_-]+)$",
+    r"^(?P<tenant>[A-Za-z0-9][A-Za-z0-9_-]+?)_(?P<base>[A-Z][A-Za-z0-9]+)$",
+)
+# Database-naming pattern that hints "this snapshot is one tenant
+# of a database-per-tenant deployment". Single-database scope means
+# we cannot prove the pattern from one snapshot alone — at best we
+# can flag the result as ``unknown_single_db`` so an orchestrator
+# aggregating multiple databases can confirm.
+TENANT_DATABASE_NAMING_PATTERNS: tuple[str, ...] = (
+    r"^tenant[_-]?[A-Za-z0-9]+$",
+    r"^[A-Za-z0-9]+[_-]tenant$",
+)
+
 # Tenant-scope annotator (issue #13)
 # Conceptual entity names treated as tenant roots. First match in the
 # tuple that exists in the schema becomes the canonical tenant root.

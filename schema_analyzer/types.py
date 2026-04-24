@@ -61,6 +61,16 @@ class AnalysisMetadata(BaseModel):
     # is too minimal to classify (no collections).
     sharding_profile: dict[str, Any] | None = Field(default=None, alias="shardingProfile")
     sharding_profile_status: str | None = Field(default=None, alias="shardingProfileStatus")
+    # Populated by the multitenancy classifier (PRD §6.2 bullet 4) once
+    # per analysis. Carries the tenancy-style classification
+    # (``none`` / ``disjoint_smartgraph`` / ``shard_key`` /
+    # ``discriminator_field`` / ``collection_per_tenant`` /
+    # ``unknown_single_db``), the inferred tenant key, and per-collection
+    # evidence. ``multitenancy_status`` mirrors the inner ``status`` field
+    # (``"ok"`` / ``"degraded"``) so callers can branch on a single
+    # top-level key. Both absent when the snapshot has no user collections.
+    multitenancy: dict[str, Any] | None = Field(default=None, alias="multitenancy")
+    multitenancy_status: str | None = Field(default=None, alias="multitenancyStatus")
 
 
 class AnalysisResult(BaseModel):

@@ -242,6 +242,14 @@
                 { "type": "null" },
                 { "type": "string", "enum": ["ok", "degraded"] }
               ]
+            },
+            "multitenancy": { "$ref": "#/$defs/Multitenancy" },
+            "multitenancyStatus": {
+              "description": "Mirror of multitenancy.status for callers that only want to branch on ok/degraded without reading the full block. Absent when multitenancy is absent (snapshot has no user collections).",
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "enum": ["ok", "degraded"] }
+              ]
             }
           }
         }
@@ -402,6 +410,65 @@
           }
         }
       }
+    },
+
+    "Multitenancy": {
+      "description": "Multitenancy classification for the analyzed database (PRD §6.2 bullet 4). Layers on top of shardingProfile: when shardingProfile.style == \"DisjointSmartGraph\" the smart attribute is the tenant key with physicalEnforcement=true. Otherwise the analyzer probes shard keys, candidate discriminator fields, collection naming patterns, and the database name in priority order. Absent (null) when the snapshot has no user collections.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["style", "status", "physicalEnforcement", "tenantKey", "evidence"],
+          "properties": {
+            "style": {
+              "type": "string",
+              "enum": [
+                "none",
+                "disjoint_smartgraph",
+                "shard_key",
+                "discriminator_field",
+                "collection_per_tenant",
+                "database_per_tenant",
+                "unknown_single_db"
+              ],
+              "description": "Exclusive tenancy-style classification. \"none\" means no signal triggered (single-tenant database). \"unknown_single_db\" is a hint that this single-database snapshot looks tenant-named; an orchestrator must confirm by aggregating across databases."
+            },
+            "status": { "type": "string", "enum": ["ok", "degraded"] },
+            "physicalEnforcement": {
+              "type": "boolean",
+              "description": "true when tenant isolation is enforced by the storage layer (shard key, smart graph, per-tenant collection / database). false for discriminator_field — convention only, application code must enforce."
+            },
+            "tenantKey": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Property name(s) that identify a tenant (e.g. [\"tenantId\"], [\"smartAttr\"]). Empty when the style does not surface a single key (e.g. collection_per_tenant)."
+            },
+            "tenantKeyCollections": {
+              "type": "array",
+              "description": "Per-collection evidence that the tenant key was observed. Populated by shard_key and discriminator_field styles; omitted otherwise.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["collection"],
+                "properties": {
+                  "collection": { "type": "string" },
+                  "field": { "type": "string" },
+                  "shardKey": { "type": "string" },
+                  "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "distinctValues": { "type": "integer", "minimum": 0 },
+                  "sampleValues": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "evidence": {
+              "type": "object",
+              "description": "Free-form, style-specific signals that drove the classification. Always present so downstream consumers can audit / override. Shape varies by style; consumers should treat unknown keys as additive.",
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
     },
 
     "TenantScope": {
