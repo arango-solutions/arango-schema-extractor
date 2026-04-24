@@ -4,6 +4,94 @@
 
 (no changes)
 
+## 0.6.1
+
+Bugfix and hardening release. No new user-facing features and no
+intentional breaking changes; existing v1 contract callers and
+programmatic consumers continue to work unchanged.
+
+### Tool contract (v1)
+
+- **Drop `outputOptions.pretty`** from the request schema. The field was
+  declared in 0.6.0 but never read by `run_tool`; pretty-printing has
+  always been a CLI / caller concern. Strict callers passing `pretty`
+  must remove it to keep validating.
+- **Honor `outputOptions.includeSnapshotFingerprint`.** Default `true`
+  (previous behavior). Setting `false` now actually omits
+  `tooling.snapshotFingerprint` from the response.
+- **Bound request size.** `maxLength` on string fields (URL ≤ 2048,
+  password ≤ 1024, system prompt ≤ 65536, etc.) and `maxItems` on
+  request-side analysis arrays (`entities` / `relationships` ≤ 50000,
+  `properties` ≤ 100000). Closes a DoS surface on any process exposing
+  the v1 contract over MCP / RPC. Requests within historical sizes are
+  unaffected.
+
+### Security hardening
+
+- **Cache directory containment.** New optional `SCHEMA_ANALYZER_CACHE_ROOT`
+  env var. When set, every resolved cache directory must live under the
+  configured root; `..` traversal is rejected.
+- **Connection host allowlist.** New optional
+  `SCHEMA_ANALYZER_ALLOWED_HOSTS` env var (comma-separated host[:port]).
+  When set, `connection.url` requests targeting other hosts are
+  rejected before any database call. Unset preserves the historical
+  trust-the-caller behavior for local CLI use.
+- **Cache file permissions.** Filesystem cache writes are now `chmod 0o600`
+  on POSIX hosts so cached samples are owner-only on shared systems.
+- **OpenRouter provider hardening.** HTTP error bodies are scrubbed for
+  bearer-token / `api_key` / `sk-…` patterns before being attached to
+  `SchemaAnalyzerError`; HTTP redirects are blocked via a custom opener
+  so a typo'd `base_url` cannot silently relay credentials to a
+  different host.
+- **LLM output allowlist.** Reconciliation now strips any
+  `collectionName` / `edgeCollectionName` produced by the LLM that does
+  not appear in the live snapshot, before backfill runs. Bind-parameter
+  AQL already prevented injection; this closes the integrity gap so
+  downstream consumers cannot trust hallucinated names.
+
+### Internal refactor (no behavior change)
+
+- Consolidated three near-duplicate `entity_property_names` helpers into
+  one in `utils.py`; fixes a latent bug where dict-shaped properties
+  were silently skipped in `tenant_scope`.
+- Added shared helpers: `normalize_analysis_dict`,
+  `iter_edge_definitions`, `index_edge_definitions_by_collection`,
+  `split_domain_tokens` in `utils.py`; `import_optional_sdk` and
+  `wrap_provider_call` in `providers/base.py`.
+- Unified sync / async retry policy in `workflow.py` via a shared
+  `_retry_decision` helper.
+- Routed all hardwired tunables through `defaults.py`
+  (`BASELINE_NO_LLM_CONFIDENCE`, `OPENROUTER_*`, `DEFAULT_*_MODEL`,
+  `STATISTICS_*`, `SNAPSHOT_FORMAT_VERSION`, `DEFAULT_OWL_*_IRI`,
+  `DEFAULT_EVAL_*`).
+- Pre-compiled the default tenant-collection naming regex in
+  `multitenancy.py`.
+- Added `fresh_database` pytest fixture in `tests/conftest.py`;
+  integration tests now reuse it.
+
+### Documentation
+
+- README: documented `--verbose` long form and the `[dev]` /
+  `[openrouter]` extras; fixed regex backtick escaping in the config
+  table.
+- PRD: marked the MCP server as shipped (no longer "future"); widened
+  the testing matrix to Python 3.10–3.13 to match the classifiers;
+  documented the new env-driven security knobs in §4.3.
+- CONTRIBUTING: corrected the project tree to list every `__init__.py`;
+  documented `scripts/run_reverse_engineering_eval.py` as an ad-hoc
+  developer runner.
+- `.env.example`: clarified that `ARANGO_HOST` / `ARANGO_PASSWORD`
+  fallbacks apply only to the eval CLI, plus examples for the new
+  `SCHEMA_ANALYZER_*` env vars.
+- `docs/tool-contract/v1/`: synchronized the schema and example copies
+  with the bundled package versions.
+
+### Tests
+
+- 353 unit tests passing (32 integration tests skip without
+  `RUN_INTEGRATION=1`). New coverage in `tests/test_tool_security.py`,
+  `tests/test_phase2_helpers.py`, and the expanded `tests/test_utils.py`.
+
 ## 0.6.0
 
 Additive, non-breaking. Existing exports continue to validate against
