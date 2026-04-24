@@ -96,6 +96,11 @@
           "additionalProperties": false,
           "required": ["entities", "relationships"],
           "properties": {
+            "shardFamilies": {
+              "type": "array",
+              "description": "Groups of structurally-identical entities that share a common name suffix (PRD §6.2 bullet 5). Empty array means detection ran and found none.",
+              "items": { "$ref": "#/$defs/ShardFamily" }
+            },
             "entities": {
               "type": "object",
               "additionalProperties": {
@@ -334,6 +339,69 @@
           }
         }
       ]
+    },
+
+    "ShardFamily": {
+      "type": "object",
+      "description": "A group of structurally-identical entities (same property set) whose conceptual names share a common suffix (PRD §6.2 bullet 5). Captures the per-source / per-repository / per-stream collection-duplication pattern. NOT multitenancy (structural duplication, not per-customer isolation). Downstream consumers (NL→Cypher prompt builders, UI mapping panels) use the family grouping to emit UNION-aware guidance instead of silently picking one member.",
+      "additionalProperties": false,
+      "required": ["name", "suffix", "discriminator", "sharedProperties", "members"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Family label, derived from the common suffix with any leading underscore stripped (e.g. \"Document\" from suffix \"Document\")."
+        },
+        "suffix": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The verbatim common suffix shared by every member's conceptual name (e.g. \"Document\", \"_Golden_Entities\")."
+        },
+        "discriminator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["field", "collection_prefix"],
+              "description": "\"field\" when every member declares a candidate discriminator property (see SHARD_FAMILY_DISCRIMINATOR_FIELDS in defaults). \"collection_prefix\" otherwise — discriminatorValue then comes from the prefix portion of each member's conceptual name."
+            },
+            "field": {
+              "type": "string",
+              "description": "Required when source == \"field\". The property name carried by every member that distinguishes shards (e.g. \"repo\")."
+            }
+          }
+        },
+        "sharedProperties": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sorted property-name list common to all members. Identical to each member's property names by construction (the bucket key is the hash of this list)."
+        },
+        "members": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entity", "collectionName", "discriminatorValue"],
+            "properties": {
+              "entity": {
+                "type": "string",
+                "description": "Conceptual entity name (key in physicalMapping.entities)."
+              },
+              "collectionName": {
+                "type": "string",
+                "description": "Underlying ArangoDB collection name."
+              },
+              "discriminatorValue": {
+                "type": "string",
+                "description": "The portion of the entity name preceding the family suffix (e.g. \"IBEX\" for \"IBEXDocument\" with suffix \"Document\"). Empty string is permitted in the degenerate case where the entity name equals the suffix."
+              }
+            }
+          }
+        }
+      }
     },
 
     "TenantScope": {

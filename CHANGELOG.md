@@ -1,5 +1,65 @@
 # Changelog
 
+## Unreleased
+
+Additive, non-breaking. Existing exports continue to validate against
+the v1 contract unchanged.
+
+### New features
+
+- **Shard-family detection (`physicalMapping.shardFamilies`).**
+  Implements PRD §6.2 bullet 5. A *shard family* groups conceptual
+  entities that share an identical property set and a common
+  CamelCase / snake_case suffix — the structural fingerprint of the
+  per-source / per-repository / per-stream collection-duplication
+  pattern (e.g. `IBEX_Documents` / `MAROCCHINO_Documents` /
+  `MOR1KX_Documents` / `OR1200_Documents` ⇒ family `Document`).
+
+  Detection is deterministic, snapshot-only (no DB round-trip, no LLM
+  call). Each family carries:
+
+  - `name` / `suffix` — family label and the verbatim shared suffix.
+  - `discriminator` — `{source: "field", field: <name>}` when every
+    member declares a candidate discriminator field (default
+    candidates: `repo`, `source`, `stream`, `upstream`); otherwise
+    `{source: "collection_prefix"}` and the discriminator value is
+    drawn from each member's name prefix.
+  - `sharedProperties` — sorted property-name list (the bucket key).
+  - `members[]` — for each member entity, its conceptual name,
+    underlying `collectionName`, and `discriminatorValue` (the
+    name-prefix portion).
+
+  Downstream impact: NL→Cypher prompt builders and UI mapping panels
+  can now emit UNION-aware guidance instead of silently picking one
+  member alphabetically (the IBEX/MAROCCHINO/MOR1KX/OR1200 first-in-
+  summary bias, defect D7 in `arango-cypher-py/docs/schema_inference_bugfix_prd.md`).
+
+  Output is sorted by `(name, suffix)` for deterministic golden-snapshot
+  output. `shardFamilies` is omitted entirely when the input has no
+  usable entity dict; an empty list (`[]`) means detection ran and
+  found no families (consumers can distinguish "didn't run" from "ran,
+  found none").
+
+### Tunables (`schema_analyzer/defaults.py`)
+
+- `MIN_SHARD_FAMILY_SIZE` (default `2`) — minimum members for a family.
+- `MIN_SHARD_FAMILY_SUFFIX_LEN` (default `4`) — minimum suffix length;
+  short suffixes like `Op`/`Tx` are too noisy to be useful.
+- `SHARD_FAMILY_DISCRIMINATOR_FIELDS` (default `("repo", "source",
+  "stream", "upstream")`) — case-insensitive candidate field names
+  probed in order; first one carried by *every* member wins.
+
+### Backward compatibility
+
+- `PhysicalMapping.shard_families` is `None` by default. `to_json`
+  omits the `shardFamilies` key when `None`, preserving byte-identity
+  with pre-detector output for callers that build mappings by hand.
+- v1 response schema gains an additive `shardFamilies` array under
+  `physicalMapping`. Existing fixtures continue to validate (the field
+  is optional).
+- No cache invalidation needed: `physical_fingerprint` is unchanged
+  and the new field is purely additive.
+
 ## 0.5.0
 
 Additive, non-breaking. Existing exports continue to validate against

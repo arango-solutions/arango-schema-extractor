@@ -14,6 +14,14 @@ RelationshipMappingStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
 class PhysicalMapping:
     entities: dict[str, dict[str, Any]] = field(default_factory=dict)
     relationships: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Shard-family records produced by
+    # :func:`schema_analyzer.shard_families.detect_shard_families`
+    # (PRD §6.2 bullet 5). Optional and additive: ``None`` means the
+    # detector did not run (older fixtures, baseline-only paths that
+    # opt out, or hand-crafted mappings imported via ``from_json``);
+    # an empty list means the detector ran but found no families.
+    # Preserves byte-identity with pre-detector output when ``None``.
+    shard_families: list[dict[str, Any]] | None = None
 
     @classmethod
     def empty(cls) -> PhysicalMapping:
@@ -23,13 +31,18 @@ class PhysicalMapping:
     def from_json(cls, data: dict[str, Any]) -> PhysicalMapping:
         ent = data.get("entities", {})
         rel = data.get("relationships", {})
+        fam = data.get("shardFamilies")
         return cls(
             entities=dict(ent) if isinstance(ent, dict) else {},
             relationships=dict(rel) if isinstance(rel, dict) else {},
+            shard_families=list(fam) if isinstance(fam, list) else None,
         )
 
     def to_json(self) -> dict[str, Any]:
-        return {"entities": self.entities, "relationships": self.relationships}
+        out: dict[str, Any] = {"entities": self.entities, "relationships": self.relationships}
+        if self.shard_families is not None:
+            out["shardFamilies"] = self.shard_families
+        return out
 
     def get_entity_mapping(self, entity_type: str) -> dict[str, Any] | None:
         return self.entities.get(entity_type)

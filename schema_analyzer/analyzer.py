@@ -29,6 +29,7 @@ from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .providers import create_provider, get_default_model, get_provider_env_var
 from .reconcile import reconcile_physical_mapping
+from .shard_families import detect_shard_families
 from .sharding_profile import classify_sharding_profile
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .statistics import (
@@ -221,6 +222,24 @@ def _apply_sharding_profile(
         data["metadata"] = meta
     meta["shardingProfile"] = profile
     meta["shardingProfileStatus"] = profile.get("status")
+
+
+def _apply_shard_families(data: dict[str, Any]) -> None:
+    """Detect shard families across ``data["physicalMapping"]["entities"]``
+    and stamp ``data["physicalMapping"]["shardFamilies"]``.
+
+    Always safe to call. Writes nothing (preserves the prior physical
+    mapping byte-for-byte) when the input has no usable entity dict —
+    consumers can then distinguish "didn't run" from "ran, found
+    none" (the latter writes an explicit empty list).
+    """
+    families = detect_shard_families(data)
+    if families is None:
+        return
+    pm = data.get("physicalMapping")
+    if not isinstance(pm, dict):
+        return
+    pm["shardFamilies"] = families
 
 
 def _apply_tenant_scope(data: dict[str, Any]) -> None:
@@ -430,6 +449,7 @@ class AgenticSchemaAnalyzer:
                 "metadata": {},
             }
             _apply_sharding_profile(stats_holder, snapshot)
+            _apply_shard_families(stats_holder)
             _apply_statistics(db, stats_holder, snapshot)
             meta = AnalysisMetadata(
                 confidence=0.1,
@@ -539,6 +559,7 @@ class AgenticSchemaAnalyzer:
             repair_attempts = 0
 
         _apply_sharding_profile(data, prep.snapshot)
+        _apply_shard_families(data)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -610,6 +631,7 @@ class AgenticSchemaAnalyzer:
             repair_attempts = 0
 
         _apply_sharding_profile(data, prep.snapshot)
+        _apply_shard_families(data)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 

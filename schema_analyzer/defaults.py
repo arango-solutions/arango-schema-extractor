@@ -48,6 +48,33 @@ MAX_TYPE_VALUE_LENGTH: int = 64
 MAX_BROADENED_TYPE_CANDIDATES: int = 10
 UNRESOLVED_ENDPOINT: str = "Any"
 
+# Shard-family detection (PRD §6.2 bullet 5 — see docs/PRD.md)
+# A shard family groups structurally-identical entities whose names
+# share a common suffix (e.g. ``IBEXDocument`` / ``MAROCCHINODocument``
+# / ``MOR1KXDocument`` / ``OR1200Document`` → family ``Document``).
+# Buckets smaller than this are skipped — a "family of one" is just an
+# entity.
+MIN_SHARD_FAMILY_SIZE: int = 2
+# Minimum length of the common suffix used to label a family. Shorter
+# suffixes (``Op``, ``Tx``) trigger too many false positives across
+# unrelated entities. The suffix must end on a capital-letter boundary
+# (i.e. the character just before the suffix is lower-case or the
+# suffix starts at index 0); this gates against accidental substring
+# matches like ``Tenant`` matching ``CurrentTenant`` and
+# ``ParentTenant`` while rejecting ``MultitenantConfig``.
+MIN_SHARD_FAMILY_SUFFIX_LEN: int = 4
+# Discriminator field probe: when every member collection of a family
+# carries one of these field names, the family is annotated with
+# ``discriminator.source = "field"``. Otherwise the discriminator
+# falls back to ``"collection_prefix"`` (the prefix portion of each
+# member's conceptual name).
+SHARD_FAMILY_DISCRIMINATOR_FIELDS: tuple[str, ...] = (
+    "repo",
+    "source",
+    "stream",
+    "upstream",
+)
+
 # Tenant-scope annotator (issue #13)
 # Conceptual entity names treated as tenant roots. First match in the
 # tuple that exists in the schema becomes the canonical tenant root.
