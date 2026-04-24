@@ -45,6 +45,7 @@ from .defaults import (
     TENANT_SCOPE_MAX_HOPS,
     TENANT_SCOPE_ROOT_NAMES,
 )
+from .utils import entity_property_names
 
 logger = logging.getLogger(__name__)
 
@@ -122,26 +123,6 @@ def _resolve_max_hops(explicit: int | None) -> int:
 # --- Helpers ----------------------------------------------------------------
 
 
-def _entity_property_names(entity: dict[str, Any]) -> list[str]:
-    """Return declared property names. Tolerates two shapes:
-
-    * ``properties`` is a list of strings ``["TENANT_ID", "NAME"]``.
-    * ``properties`` is a list of dicts ``[{"name": "TENANT_ID"}]``.
-    """
-    props = entity.get("properties") or []
-    if not isinstance(props, list):
-        return []
-    out: list[str] = []
-    for p in props:
-        if isinstance(p, str):
-            out.append(p)
-        elif isinstance(p, dict):
-            n = p.get("name")
-            if isinstance(n, str):
-                out.append(n)
-    return out
-
-
 def _endpoint_label(endpoint: Any) -> str | None:
     if isinstance(endpoint, str):
         return endpoint or None
@@ -205,7 +186,7 @@ def _find_denorm_field(
     entity: dict[str, Any],
     regex: re.Pattern[str],
 ) -> str | None:
-    for prop_name in _entity_property_names(entity):
+    for prop_name in entity_property_names(entity):
         if regex.match(prop_name):
             return prop_name
     return None

@@ -15,7 +15,13 @@ from schema_analyzer import AgenticSchemaAnalyzer
 from schema_analyzer.baseline import infer_baseline_from_snapshot
 from schema_analyzer.snapshot import snapshot_physical_schema
 
-from ..conftest import connect_root, env, skip_if_integration_not_enabled, wait_for_arango
+from ..conftest import (
+    connect_root,
+    ensure_fresh_database,
+    env,
+    skip_if_integration_not_enabled,
+    wait_for_arango,
+)
 from .datasets import seed_movies_hybrid, seed_movies_lpg, seed_movies_pg
 
 pytestmark = pytest.mark.integration
@@ -39,10 +45,7 @@ EXPECTED_ENDPOINTS = {
 
 
 def _ensure_db(sys_db, db_name: str):
-    if sys_db.has_database(db_name):
-        with contextlib.suppress(Exception):
-            sys_db.delete_database(db_name)
-    sys_db.create_database(db_name)
+    ensure_fresh_database(sys_db, db_name)
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────

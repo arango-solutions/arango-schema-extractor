@@ -41,6 +41,7 @@ mypy schema_analyzer/  # type checking
 
 ```
 schema_analyzer/
+├── __init__.py          # Public API re-exports (see __all__)
 ├── analyzer.py          # AgenticSchemaAnalyzer (main entry point)
 ├── baseline.py          # Deterministic inference (no LLM fallback)
 ├── cache.py             # Filesystem caching by schema fingerprint
@@ -53,10 +54,10 @@ schema_analyzer/
 ├── exports.py           # Transpiler export (Cypher)
 ├── mapping.py           # PhysicalMapping with AQL helpers
 ├── mcp_server.py        # MCP stdio server (arangodb-schema-analyzer-mcp)
-├── multitenancy.py      # metadata.multitenancy classification
+├── multitenancy.py      # metadata.multitenancy classification (0.6.0)
 ├── owl_export.py        # OWL Turtle export
-├── reconcile.py         # Backfill collections the LLM omitted
-├── shard_families.py    # physicalMapping.shardFamilies grouping
+├── reconcile.py         # Backfill + LLM collection-name allowlist
+├── shard_families.py    # physicalMapping.shardFamilies grouping (0.6.0)
 ├── sharding_profile.py  # metadata.shardingProfile classification (0.5.0)
 ├── snapshot.py          # Physical schema introspection + fingerprints
 ├── statistics.py        # metadata.statistics (counts + cardinality)
@@ -64,21 +65,28 @@ schema_analyzer/
 ├── tool.py              # Tool contract v1 entrypoint (run_tool)
 ├── tool_contract_v1.py  # JSON Schema validation
 ├── types.py             # Pydantic models (AnalysisMetadata, AnalysisResult)
-├── utils.py             # Shared utilities (pascal_case, sha256, JSON extraction)
+├── utils.py             # Shared utilities (pascal_case, sha256, entity_property_names, …)
 ├── validation.py        # LLM output validation schema
 ├── workflow.py          # Generate → validate → repair loop
 ├── py.typed             # PEP 561 marker
-├── eval/                # Evaluation harness
+├── eval/
+│   ├── __init__.py
 │   ├── domain_loader.py # Load domain specs from domains/
 │   ├── generator.py     # Physical schema generator (PG + LPG variants)
 │   ├── runner.py        # Eval orchestration and reporting
 │   └── scoring.py       # F1, domain/range, mapping style scoring
-├── providers/           # LLM provider implementations
+├── providers/
+│   ├── __init__.py      # Provider registry / create_provider()
 │   ├── base.py          # LLMProvider protocol
 │   ├── openai_provider.py
 │   ├── anthropic_provider.py
 │   └── openrouter_provider.py
-└── tool_contract/v1/    # Bundled JSON Schema files (request / response)
+└── tool_contract/
+    ├── __init__.py
+    └── v1/
+        ├── __init__.py
+        ├── request.schema.json   # Bundled v1 request schema
+        └── response.schema.json  # Bundled v1 response schema
 ```
 
 ## Guidelines
@@ -104,3 +112,7 @@ schema_analyzer/
 1. Create `domains/<name>/domain.json` with entities and relationships
 2. The eval harness auto-discovers domains via `list_domains()`
 3. Run `arangodb-schema-analyzer eval --domains <name>` to test
+
+## Ad-hoc dev scripts
+
+`scripts/run_reverse_engineering_eval.py` is an ad-hoc developer runner that materializes the bundled domain packs, snapshots them, calls the analyzer, and prints per-variant F1 / domain-range / mapping-style scores. It overlaps with the supported `arangodb-schema-analyzer eval` CLI; prefer the CLI for repeatable runs and use the script only for quick local iteration.

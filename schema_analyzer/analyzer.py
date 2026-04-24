@@ -14,6 +14,7 @@ from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
 from .defaults import (
+    BASELINE_NO_LLM_CONFIDENCE,
     CONFIDENCE_BASE,
     CONFIDENCE_FLOOR,
     CONFIDENCE_MAX_PENALTY,
@@ -29,7 +30,7 @@ from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .multitenancy import classify_multitenancy
 from .providers import create_provider, get_default_model, get_provider_env_var
-from .reconcile import reconcile_physical_mapping
+from .reconcile import reconcile_physical_mapping, strip_unknown_collection_names
 from .shard_families import detect_shard_families
 from .sharding_profile import classify_sharding_profile
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
@@ -163,6 +164,26 @@ def _compute_confidence(errors: list[str], warnings: list[str]) -> float:
         return 0.0
     penalty = min(CONFIDENCE_MAX_PENALTY, CONFIDENCE_WARNING_PENALTY * len(warnings))
     return max(CONFIDENCE_FLOOR, CONFIDENCE_BASE - penalty)
+
+
+def _apply_collection_name_allowlist(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+    warnings: list[str],
+) -> None:
+    """
+    Strip any LLM-supplied ``collectionName`` / ``edgeCollectionName``
+    that does not name a real collection in ``snapshot``. Each strip
+    appends a warning so the caller can audit what was discarded.
+
+    Runs BEFORE :func:`_apply_reconciliation` so that stripped entries
+    become eligible for deterministic baseline backfill in the same pass.
+    """
+    msgs = strip_unknown_collection_names(data, snapshot)
+    if msgs:
+        warnings.extend(msgs)
+        for m in msgs:
+            logger.warning("Collection-name allowlist: %s", m)
 
 
 def _apply_reconciliation(
@@ -478,7 +499,7 @@ class AgenticSchemaAnalyzer:
             _apply_multitenancy(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             meta = AnalysisMetadata(
-                confidence=0.1,
+                confidence=BASELINE_NO_LLM_CONFIDENCE,
                 timestamp=now_iso(),
                 analyzed_collection_counts={"documentCollections": doc_count, "edgeCollections": edge_count},
                 detected_patterns=baseline.get("detectedPatterns", []),
@@ -570,6 +591,7 @@ class AgenticSchemaAnalyzer:
             )
             data = wf.data
             repair_attempts = wf.repair_attempts
+            _apply_collection_name_allowlist(data, prep.snapshot, warnings)
             _apply_reconciliation(data, prep.snapshot, warnings)
         except SchemaAnalyzerError as e:
             logger.warning("LLM workflow failed, falling back to baseline: %s", e)
@@ -643,6 +665,7 @@ class AgenticSchemaAnalyzer:
             )
             data = wf.data
             repair_attempts = wf.repair_attempts
+            _apply_collection_name_allowlist(data, prep.snapshot, warnings)
             _apply_reconciliation(data, prep.snapshot, warnings)
         except SchemaAnalyzerError as e:
             logger.warning("Async LLM workflow failed, falling back to baseline: %s", e)

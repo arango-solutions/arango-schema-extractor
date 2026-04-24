@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..defaults import (
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_OPENROUTER_MODEL,
+)
 from ..errors import SchemaAnalyzerError
 from .base import LLMProvider, LLMResponse
 
@@ -10,19 +15,19 @@ _REGISTRY: dict[str, dict[str, Any]] = {
         "module": "schema_analyzer.providers.openai_provider",
         "class": "OpenAIProvider",
         "env_var": "OPENAI_API_KEY",
-        "default_model": "gpt-4o-mini",
+        "default_model": DEFAULT_OPENAI_MODEL,
     },
     "anthropic": {
         "module": "schema_analyzer.providers.anthropic_provider",
         "class": "AnthropicProvider",
         "env_var": "ANTHROPIC_API_KEY",
-        "default_model": "claude-3-5-sonnet-latest",
+        "default_model": DEFAULT_ANTHROPIC_MODEL,
     },
     "openrouter": {
         "module": "schema_analyzer.providers.openrouter_provider",
         "class": "OpenRouterProvider",
         "env_var": "OPENROUTER_API_KEY",
-        "default_model": "openai/gpt-4o-mini",
+        "default_model": DEFAULT_OPENROUTER_MODEL,
     },
 }
 

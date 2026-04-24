@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .utils import split_domain_tokens
+
 logger = logging.getLogger(__name__)
 
 _DOMAINS_DIR = Path(__file__).resolve().parents[1] / "domains"
@@ -156,15 +158,11 @@ def _extract_signal_tokens(snapshot: dict[str, Any]) -> set[str]:
         name = col.get("name", "")
         if isinstance(name, str) and name:
             tokens.add(name.lower())
-            for part in name.lower().replace("-", "_").split("_"):
-                if part:
-                    tokens.add(part)
+            tokens.update(split_domain_tokens(name))
 
         for val in _iter_type_values_from_col(col):
             tokens.add(val.lower())
-            for part in val.lower().replace("-", "_").split("_"):
-                if part:
-                    tokens.add(part)
+            tokens.update(split_domain_tokens(val))
 
         for f in _iter_field_names_from_col(col):
             tokens.add(f.lower())
@@ -174,18 +172,14 @@ def _extract_signal_tokens(snapshot: dict[str, Any]) -> set[str]:
             gname = g.get("name", "")
             if isinstance(gname, str) and gname:
                 tokens.add(gname.lower())
-                for part in gname.lower().replace("-", "_").split("_"):
-                    if part:
-                        tokens.add(part)
+                tokens.update(split_domain_tokens(gname))
 
     for g in snapshot.get("graphs") or []:
         if isinstance(g, dict):
             gname = g.get("name", "")
             if isinstance(gname, str) and gname:
                 tokens.add(gname.lower())
-                for part in gname.lower().replace("-", "_").split("_"):
-                    if part:
-                        tokens.add(part)
+                tokens.update(split_domain_tokens(gname))
 
     return tokens
 
@@ -220,10 +214,7 @@ def _build_spec_keywords(spec: dict[str, Any]) -> set[str]:
     """Build a keyword set from a domain spec."""
     keywords: set[str] = set()
     domain_name = spec.get("domain", "")
-    if isinstance(domain_name, str):
-        for part in domain_name.lower().replace("-", "_").split("_"):
-            if part:
-                keywords.add(part)
+    keywords.update(split_domain_tokens(domain_name))
 
     for ent in spec.get("entities") or []:
         if not isinstance(ent, dict):
@@ -241,9 +232,7 @@ def _build_spec_keywords(spec: dict[str, Any]) -> set[str]:
         rtype = rel.get("type", "")
         if isinstance(rtype, str):
             keywords.add(rtype.lower())
-            for part in rtype.lower().split("_"):
-                if part:
-                    keywords.add(part)
+            keywords.update(split_domain_tokens(rtype))
         for prop in rel.get("properties") or []:
             if isinstance(prop, str):
                 keywords.add(prop.lower())

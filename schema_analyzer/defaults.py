@@ -30,6 +30,19 @@ SAMPLE_VALUE_TOP_K: int = 20
 
 # Cache
 DEFAULT_CACHE_DIR: str = ".schema-analyzer-cache"
+# Optional environment variable that, when set, restricts every
+# resolved cache directory to a subtree rooted at its value. Lets
+# operators expose the v1 tool over an MCP/RPC surface without
+# letting callers write under arbitrary filesystem paths via
+# ``analysisOptions.cache.directory``.
+CACHE_ROOT_ENV_VAR: str = "SCHEMA_ANALYZER_CACHE_ROOT"
+
+# Connection trust
+# Optional environment variable (comma-separated host[:port] list)
+# that, when set, restricts the host portion of ``connection.url``
+# accepted by ``run_tool``. Empty / unset preserves the historical
+# trust-the-caller behaviour for local CLI use.
+ALLOWED_HOSTS_ENV_VAR: str = "SCHEMA_ANALYZER_ALLOWED_HOSTS"
 
 # Baseline inference
 BASELINE_NO_LLM_CONFIDENCE: float = 0.1
@@ -147,6 +160,31 @@ EVAL_DELTA_THRESHOLD: float = 0.005
 # Provider / network
 OPENROUTER_ERROR_BODY_MAX_CHARS: int = 2000
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+DEFAULT_OPENAI_MODEL: str = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL: str = "claude-3-5-sonnet-latest"
+DEFAULT_OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+
+# Statistics (PRD §6.2 statistics block)
+# Average degree above this is treated as the high-cardinality side
+# of a relationship (drives the 1:1 / 1:N / N:1 / N:M classification
+# emitted on every metadata.statistics block).
+STATISTICS_CARDINALITY_THRESHOLD: float = 1.5
+# Decimal places used when rounding average in/out degree.
+STATISTICS_DEGREE_ROUND: int = 2
+# Decimal places used when rounding selectivity (edge_count / (S × T)).
+STATISTICS_SELECTIVITY_ROUND: int = 6
+
+# Snapshot format
+# Bumped when the on-disk shape of snapshot_physical_schema() changes
+# in a way that fingerprint-keyed caches must invalidate.
+SNAPSHOT_FORMAT_VERSION: int = 1
+
+# OWL Turtle export
+# Default IRIs used by ``export_conceptual_model_as_owl_turtle``.
+# Callers can override per-call; consolidating them here makes the
+# project namespace tunable without editing the export module.
+DEFAULT_OWL_BASE_IRI: str = "http://arangodb.com/schema/hybrid#"
+DEFAULT_OWL_PHYSICAL_IRI: str = "http://arangodb.com/schema/physical#"
 
 # Fingerprint display
 FINGERPRINT_DISPLAY_LENGTH: int = 16

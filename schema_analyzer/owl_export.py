@@ -3,6 +3,9 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
+from .defaults import DEFAULT_OWL_BASE_IRI, DEFAULT_OWL_PHYSICAL_IRI
+from .utils import normalize_analysis_dict
+
 if TYPE_CHECKING:
     from .types import AnalysisResult
 
@@ -22,8 +25,8 @@ def _sanitize_iri_local(name: str) -> str:
 def export_conceptual_model_as_owl_turtle(
     analysis: AnalysisResult | dict[str, Any],
     *,
-    base_iri: str = "http://arangodb.com/schema/hybrid#",
-    phys_iri: str = "http://arangodb.com/schema/physical#",
+    base_iri: str = DEFAULT_OWL_BASE_IRI,
+    phys_iri: str = DEFAULT_OWL_PHYSICAL_IRI,
 ) -> str:
     """
     Minimal OWL Turtle export for the conceptual schema + physical mappings.
@@ -32,10 +35,10 @@ def export_conceptual_model_as_owl_turtle(
     - SPARQL conceptual queries
     - physical mappings to guide translation to AQL
     """
-    data = analysis.model_dump() if hasattr(analysis, "model_dump") else analysis
+    data = normalize_analysis_dict(analysis)
 
-    cs = data.get("conceptual_schema") or data.get("conceptualSchema") or {}
-    pm = data.get("physical_mapping") or data.get("physicalMapping") or {}
+    cs = data.get("conceptualSchema") or {}
+    pm = data.get("physicalMapping") or {}
 
     entities = cs.get("entities") or []
     rels = cs.get("relationships") or []

@@ -6,6 +6,8 @@ import string
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+from ..defaults import DEFAULT_EVAL_SCALE, DEFAULT_EVAL_SEED
+
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
@@ -71,8 +73,8 @@ def materialize_domain_variant(
     domain_spec: dict[str, Any],
     variant: PhysicalVariant,
     *,
-    seed: int = 1,
-    scale: int = 10,
+    seed: int = DEFAULT_EVAL_SEED,
+    scale: int = DEFAULT_EVAL_SCALE,
     create_graph: bool = True,
 ) -> dict[str, Any]:
     """

@@ -23,7 +23,6 @@
     "maxRepairAttempts": 2
   },
   "outputOptions": {
-    "pretty": true,
     "includeSnapshot": false,
     "includeSnapshotFingerprint": true
   }

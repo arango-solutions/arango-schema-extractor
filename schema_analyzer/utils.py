@@ -17,8 +17,134 @@ def stable_dumps(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def entity_property_names(entity: dict[str, Any]) -> list[str]:
+    """
+    Return the property-name list declared on a schema entity, tolerating
+    every shape the analyzer ever emits.
+
+    Three shapes are accepted:
+
+    * ``properties`` is a **dict** keyed by property name (the
+      ``physicalMapping.entities[*].properties`` shape used by the LLM
+      output and by ``infer_baseline_from_snapshot``).
+    * ``properties`` is a **list of dicts** with a ``name`` key (the
+      ``conceptualSchema.entities[*].properties`` shape).
+    * ``properties`` is a **list of bare strings** (older fixtures /
+      truncated LLM output).
+
+    Any other shape (including ``None``) yields ``[]``. Order of the
+    returned list mirrors the input order; callers that need a stable
+    order should sort.
+    """
+    props = entity.get("properties")
+    if isinstance(props, dict):
+        return [str(k) for k in props]
+    if isinstance(props, list):
+        out: list[str] = []
+        for item in props:
+            if isinstance(item, str):
+                out.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("name"), str):
+                out.append(item["name"])
+        return out
+    return []
+
+
 def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def split_domain_tokens(name: str) -> list[str]:
+    """Lowercase ``name`` and split on common separators (``-`` / ``_``),
+    returning the non-empty token list.
+
+    Used by domain-detection scoring to derive matchable keyword tokens
+    from collection / graph / type-value names. Empty input or
+    non-strings yield ``[]``.
+    """
+    if not isinstance(name, str) or not name:
+        return []
+    return [p for p in name.lower().replace("-", "_").split("_") if p]
+
+
+def iter_edge_definitions(graph: dict[str, Any]) -> list[dict[str, Any]]:
+    """Yield well-formed ``edge_definitions`` records from a snapshot
+    graph entry, dropping any malformed (non-dict / no-collection) rows.
+
+    Centralises the common ``for ed in graph.get("edge_definitions") or []:
+    if not isinstance(ed, dict): continue ...`` pattern that previously
+    appeared in ``baseline.py`` and ``sharding_profile.py``.
+    """
+    out: list[dict[str, Any]] = []
+    for ed in graph.get("edge_definitions") or []:
+        if not isinstance(ed, dict):
+            continue
+        col = ed.get("collection")
+        if not isinstance(col, str) or not col:
+            continue
+        out.append(ed)
+    return out
+
+
+def index_edge_definitions_by_collection(
+    graphs: list[dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    """Build a deterministic ``{edge_collection_name: edge_def}`` index
+    over every named graph in ``graphs``.
+
+    When two graphs declare the same edge collection the
+    lexicographically first graph name wins (callers that rely on this
+    determinism include sharding-profile classification and baseline
+    endpoint enrichment).
+    """
+    out: dict[str, dict[str, Any]] = {}
+    if not graphs:
+        return out
+    for g in sorted(graphs, key=lambda x: str(x.get("name") or "")):
+        if not isinstance(g, dict):
+            continue
+        for ed in iter_edge_definitions(g):
+            out.setdefault(str(ed["collection"]), ed)
+    return out
+
+
+def normalize_analysis_dict(analysis: Any) -> dict[str, Any]:
+    """
+    Coerce an ``AnalysisResult`` (pydantic model) or already-serialized
+    dict into a plain ``dict`` and normalize the snake_case vs camelCase
+    aliases under the ``conceptual_schema`` / ``physical_mapping`` keys.
+
+    Returns a shallow copy where:
+
+    * ``conceptualSchema`` is always present (sourced from
+      ``conceptual_schema`` if needed) — and ``conceptual_schema`` is
+      removed once it has been hoisted.
+    * ``physicalMapping`` is always present (sourced from
+      ``physical_mapping`` if needed) — and ``physical_mapping`` is
+      removed once it has been hoisted.
+
+    Centralises the conversion the OWL / docs / cypher exporters used to
+    repeat (``analysis.model_dump() if hasattr(...) else analysis`` plus
+    ``data.get("conceptual_schema") or data.get("conceptualSchema")``).
+    """
+    if hasattr(analysis, "model_dump"):
+        data = dict(analysis.model_dump())
+    elif isinstance(analysis, dict):
+        data = dict(analysis)
+    else:
+        raise TypeError(f"normalize_analysis_dict: unsupported type {type(analysis).__name__}")
+
+    if "conceptualSchema" not in data and "conceptual_schema" in data:
+        data["conceptualSchema"] = data.pop("conceptual_schema")
+    elif "conceptual_schema" in data:
+        data.pop("conceptual_schema")
+
+    if "physicalMapping" not in data and "physical_mapping" in data:
+        data["physicalMapping"] = data.pop("physical_mapping")
+    elif "physical_mapping" in data:
+        data.pop("physical_mapping")
+
+    return data
 
 
 def analysis_cache_storage_key(physical_fingerprint: str, *, llm_cache_segment: str | None) -> str:

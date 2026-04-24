@@ -48,6 +48,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from .utils import iter_edge_definitions
+
 logger = logging.getLogger(__name__)
 
 ShardingStyle = Literal[
@@ -137,12 +139,8 @@ def _graph_evidence(
 
     vertex_cols: set[str] = set()
     edge_cols: set[str] = set()
-    for ed in graph_entry.get("edge_definitions") or []:
-        if not isinstance(ed, dict):
-            continue
-        col = ed.get("collection")
-        if isinstance(col, str) and col:
-            edge_cols.add(col)
+    for ed in iter_edge_definitions(graph_entry):
+        edge_cols.add(str(ed["collection"]))
         for bucket in ("from", "to"):
             for v in ed.get(bucket) or []:
                 if isinstance(v, str) and v:
@@ -216,12 +214,8 @@ def _graph_membership_index(
         name = g.get("name")
         if not isinstance(name, str) or not name:
             continue
-        for ed in g.get("edge_definitions") or []:
-            if not isinstance(ed, dict):
-                continue
-            col = ed.get("collection")
-            if isinstance(col, str) and col:
-                out.setdefault(col, name)
+        for ed in iter_edge_definitions(g):
+            out.setdefault(str(ed["collection"]), name)
             for bucket in ("from", "to"):
                 for v in ed.get(bucket) or []:
                     if isinstance(v, str) and v:

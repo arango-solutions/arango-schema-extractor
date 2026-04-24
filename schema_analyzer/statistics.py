@@ -30,18 +30,26 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from .defaults import (
+    STATISTICS_CARDINALITY_THRESHOLD,
+    STATISTICS_DEGREE_ROUND,
+    STATISTICS_SELECTIVITY_ROUND,
+)
+
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
 logger = logging.getLogger(__name__)
 
-CARDINALITY_THRESHOLD: float = 1.5
+# Re-exported aliases preserved for backward compatibility with any
+# downstream caller importing the constants from this module.
+CARDINALITY_THRESHOLD: float = STATISTICS_CARDINALITY_THRESHOLD
+DEGREE_ROUND: int = STATISTICS_DEGREE_ROUND
+SELECTIVITY_ROUND: int = STATISTICS_SELECTIVITY_ROUND
+
 STATISTICS_STATUS_OK: str = "ok"
 STATISTICS_STATUS_SKIPPED_NO_DB: str = "skipped_no_db"
 STATISTICS_STATUS_PARTIAL: str = "partial"
-
-DEGREE_ROUND: int = 2
-SELECTIVITY_ROUND: int = 6
 
 
 def compute_statistics(

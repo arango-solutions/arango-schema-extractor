@@ -2,27 +2,15 @@ import pytest
 
 from schema_analyzer.tool import run_tool
 
-from ..conftest import connect_root, env, skip_if_integration_not_enabled, wait_for_arango
+from ..conftest import env
 
 pytestmark = pytest.mark.integration
 
 
-def test_tool_snapshot_and_analyze_smoke():
-    skip_if_integration_not_enabled()
-
-    client, sys_db = connect_root()
-    wait_for_arango(sys_db)
-
+def test_tool_snapshot_and_analyze_smoke(fresh_database):
     base_db = env("ARANGO_DB", "schema_analyzer_it")
     db_name = f"{base_db}_tool_smoke"
-    if sys_db.has_database(db_name):
-        import contextlib
-
-        with contextlib.suppress(Exception):
-            sys_db.delete_database(db_name)
-    sys_db.create_database(db_name)
-
-    db = client.db(db_name, username=env("ARANGO_USER", "root"), password=env("ARANGO_PASS", "openSesame"))
+    db = fresh_database(db_name)
     if not db.has_collection("users"):
         db.create_collection("users", edge=False)
     if not db.has_collection("follows"):

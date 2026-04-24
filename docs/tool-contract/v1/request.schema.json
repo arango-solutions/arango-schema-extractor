@@ -7,7 +7,7 @@
   "required": ["contractVersion", "operation"],
   "properties": {
     "contractVersion": { "const": "1" },
-    "requestId": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1, "maxLength": 256 },
     "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl"] },
 
     "connection": {
@@ -15,12 +15,17 @@
       "additionalProperties": false,
       "required": ["url", "database"],
       "properties": {
-        "url": { "type": "string", "minLength": 1, "description": "ArangoDB URL, e.g. http://localhost:8529" },
-        "database": { "type": "string", "minLength": 1 },
-        "username": { "type": "string" },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "description": "ArangoDB URL, e.g. http://localhost:8529. Hosts may be restricted by setting SCHEMA_ANALYZER_ALLOWED_HOSTS in the server environment."
+        },
+        "database": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "username": { "type": "string", "maxLength": 256 },
 
-        "password": { "type": "string", "description": "Prefer passwordEnvVar in agent workflows." },
-        "passwordEnvVar": { "type": "string", "minLength": 1 },
+        "password": { "type": "string", "maxLength": 1024, "description": "Prefer passwordEnvVar in agent workflows." },
+        "passwordEnvVar": { "type": "string", "minLength": 1, "maxLength": 256 },
 
         "verifyTls": { "type": "boolean", "default": true }
       },
@@ -41,13 +46,17 @@
       "additionalProperties": false,
       "properties": {
         "provider": { "type": "string", "enum": ["openai", "anthropic", "openrouter"] },
-        "model": { "type": "string" },
+        "model": { "type": "string", "maxLength": 256 },
 
-        "apiKey": { "type": "string", "description": "Prefer apiKeyEnvVar in agent workflows." },
-        "apiKeyEnvVar": { "type": "string", "minLength": 1 },
+        "apiKey": { "type": "string", "maxLength": 1024, "description": "Prefer apiKeyEnvVar in agent workflows." },
+        "apiKeyEnvVar": { "type": "string", "minLength": 1, "maxLength": 256 },
 
-        "systemPrompt": { "type": "string", "description": "Optional override; default is strict JSON-only." },
-        "promptVersion": { "type": "string", "description": "Optional for cache keying/traceability." }
+        "systemPrompt": {
+          "type": "string",
+          "maxLength": 65536,
+          "description": "Optional override; default is strict JSON-only. Hard limit 64 KiB to bound request size."
+        },
+        "promptVersion": { "type": "string", "maxLength": 256, "description": "Optional for cache keying/traceability." }
       },
       "allOf": [
         {
@@ -65,8 +74,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "timeoutMs": { "type": "integer", "minimum": 1000, "default": 60000 },
-        "sampleLimitPerCollection": { "type": "integer", "minimum": 0, "default": 0 },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 600000, "default": 60000 },
+        "sampleLimitPerCollection": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 0 },
         "includeSamplesInSnapshot": { "type": "boolean", "default": false },
 
         "useCache": { "type": "boolean", "default": true },
@@ -75,23 +84,36 @@
           "additionalProperties": false,
           "properties": {
             "type": { "type": "string", "enum": ["filesystem"] },
-            "directory": { "type": "string", "minLength": 1 }
+            "directory": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Cache directory path. When SCHEMA_ANALYZER_CACHE_ROOT is set in the server environment, this path (after resolution) must lie under that root or the request is rejected."
+            }
           }
         },
-        "cacheTtlSeconds": { "type": "integer", "minimum": 0, "default": 86400 },
+        "cacheTtlSeconds": { "type": "integer", "minimum": 0, "maximum": 31536000, "default": 86400 },
 
         "reviewThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.6 },
-        "maxRepairAttempts": { "type": "integer", "minimum": 0, "default": 2 }
+        "maxRepairAttempts": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2 }
       }
     },
 
     "outputOptions": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Controls what the response payload includes. JSON serialization concerns (indentation, line endings, etc.) are the caller's responsibility and are NOT part of this contract.",
       "properties": {
-        "pretty": { "type": "boolean", "default": true },
-        "includeSnapshot": { "type": "boolean", "default": false },
-        "includeSnapshotFingerprint": { "type": "boolean", "default": true },
+        "includeSnapshot": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the analyze result includes the full snapshot under result.snapshot."
+        },
+        "includeSnapshotFingerprint": {
+          "type": "boolean",
+          "default": true,
+          "description": "When false, tooling.snapshotFingerprint is omitted from the response. Default true preserves existing behavior."
+        },
         "exportTarget": { "type": "string", "enum": ["cypher"], "default": "cypher" }
       }
     },
@@ -110,7 +132,7 @@
   "$defs": {
     "PhysicalSnapshot": {
       "type": "object",
-      "description": "Physical schema snapshot as produced by snapshot_physical_schema().",
+      "description": "Physical schema snapshot as produced by snapshot_physical_schema(). Hosts that expose this contract to untrusted callers SHOULD enforce a request-body size cap at the transport layer (e.g. a few MiB); the analyzer treats nested fields as trusted snapshot data.",
       "additionalProperties": true
     },
 
@@ -124,9 +146,9 @@
           "additionalProperties": false,
           "required": ["entities", "relationships", "properties"],
           "properties": {
-            "entities": { "type": "array", "items": { "type": "object" } },
-            "relationships": { "type": "array", "items": { "type": "object" } },
-            "properties": { "type": "array", "items": { "type": "object" } }
+            "entities": { "type": "array", "maxItems": 50000, "items": { "type": "object" } },
+            "relationships": { "type": "array", "maxItems": 50000, "items": { "type": "object" } },
+            "properties": { "type": "array", "maxItems": 100000, "items": { "type": "object" } }
           }
         },
         "physicalMapping": {
@@ -144,7 +166,7 @@
           "required": ["confidence", "timestamp", "analyzedCollectionCounts", "detectedPatterns"],
           "properties": {
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-            "timestamp": { "type": "string" },
+            "timestamp": { "type": "string", "maxLength": 64 },
             "analyzedCollectionCounts": {
               "type": "object",
               "additionalProperties": false,
@@ -154,9 +176,9 @@
                 "edgeCollections": { "type": "number", "minimum": 0 }
               }
             },
-            "detectedPatterns": { "type": "array", "items": { "type": "string" } },
-            "warnings": { "type": "array", "items": { "type": "string" } },
-            "assumptions": { "type": "array", "items": { "type": "string" } }
+            "detectedPatterns": { "type": "array", "maxItems": 1000, "items": { "type": "string", "maxLength": 256 } },
+            "warnings": { "type": "array", "maxItems": 1000, "items": { "type": "string", "maxLength": 4096 } },
+            "assumptions": { "type": "array", "maxItems": 1000, "items": { "type": "string", "maxLength": 4096 } }
           }
         }
       }
@@ -183,4 +205,3 @@
     }
   ]
 }
-

@@ -11,8 +11,11 @@ from arango import ArangoClient
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
+from urllib.parse import urlsplit
+
 from .analyzer import AgenticSchemaAnalyzer
 from .defaults import (
+    ALLOWED_HOSTS_ENV_VAR,
     DEFAULT_CACHE_TTL_SECONDS,
     DEFAULT_EXPORT_TARGET,
     DEFAULT_REVIEW_THRESHOLD,
@@ -63,6 +66,41 @@ def _get_api_key(llm: dict[str, Any] | None) -> str | None:
     return None
 
 
+def _allowed_hosts() -> set[str] | None:
+    """
+    Parse ``SCHEMA_ANALYZER_ALLOWED_HOSTS`` (comma-separated host[:port])
+    into a normalised set. Returns ``None`` when unset/empty so callers
+    can short-circuit the check (preserving the default trust-the-caller
+    behaviour for local CLI use).
+    """
+    raw = os.environ.get(ALLOWED_HOSTS_ENV_VAR, "").strip()
+    if not raw:
+        return None
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def _check_url_allowed(url: str) -> None:
+    allowed = _allowed_hosts()
+    if allowed is None:
+        return
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    netloc = parts.netloc.lower()
+    if not host:
+        raise SchemaAnalyzerError(
+            "connection.url is missing a host component",
+            code="INVALID_ARGUMENT",
+        )
+    candidates = {host, netloc}
+    if parts.port is not None:
+        candidates.add(f"{host}:{parts.port}")
+    if not candidates & allowed:
+        raise SchemaAnalyzerError(
+            f"connection.url host {host!r} is not in the {ALLOWED_HOSTS_ENV_VAR} allowlist",
+            code="INVALID_ARGUMENT",
+        )
+
+
 def _connect_db(conn: dict[str, Any]) -> StandardDatabase:
     url = conn.get("url")
     db_name = conn.get("database")
@@ -71,6 +109,7 @@ def _connect_db(conn: dict[str, Any]) -> StandardDatabase:
         raise SchemaAnalyzerError("connection.url is required", code="INVALID_ARGUMENT")
     if not isinstance(db_name, str) or not db_name:
         raise SchemaAnalyzerError("connection.database is required", code="INVALID_ARGUMENT")
+    _check_url_allowed(url)
     pw = _get_password(conn)
     if pw is None:
         raise SchemaAnalyzerError("Missing ArangoDB password (password or passwordEnvVar)", code="INVALID_ARGUMENT")
@@ -81,7 +120,12 @@ def _connect_db(conn: dict[str, Any]) -> StandardDatabase:
     return client.db(db_name, username=username, password=pw)
 
 
-def _tooling_block(*, analysis: dict[str, Any] | None, snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def _tooling_block(
+    *,
+    analysis: dict[str, Any] | None,
+    snapshot: dict[str, Any] | None,
+    include_snapshot_fingerprint: bool = True,
+) -> dict[str, Any]:
     tooling: dict[str, Any] = {"contractVersion": CONTRACT_VERSION}
     if analysis and isinstance(analysis, dict):
         md = analysis.get("metadata") if isinstance(analysis.get("metadata"), dict) else {}
@@ -97,7 +141,8 @@ def _tooling_block(*, analysis: dict[str, Any] | None, snapshot: dict[str, Any] 
     if snapshot and isinstance(snapshot, dict):
         raw_ver = snapshot.get("version")
         tooling["snapshotVersion"] = int(raw_ver or 0) if str(raw_ver or "").isdigit() else raw_ver
-        tooling["snapshotFingerprint"] = fingerprint_physical_schema(snapshot, include_samples=False)
+        if include_snapshot_fingerprint:
+            tooling["snapshotFingerprint"] = fingerprint_physical_schema(snapshot, include_samples=False)
     tooling["libraryVersion"] = _library_version()
     return tooling
 
@@ -149,8 +194,11 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             conn = request["connection"]
             db = _connect_db(conn)
 
-        analysis_options = request.get("analysisOptions") if isinstance(request.get("analysisOptions"), dict) else {}
-        output_options = request.get("outputOptions") if isinstance(request.get("outputOptions"), dict) else {}
+        raw_ao = request.get("analysisOptions")
+        analysis_options: dict[str, Any] = raw_ao if isinstance(raw_ao, dict) else {}
+        raw_oo = request.get("outputOptions")
+        output_options: dict[str, Any] = raw_oo if isinstance(raw_oo, dict) else {}
+        include_snapshot_fingerprint = bool(output_options.get("includeSnapshotFingerprint", True))
 
         if op == "snapshot":
             snapshot = snapshot_physical_schema(
@@ -162,7 +210,11 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 op=op,
                 req_id=req_id,
                 result={"snapshot": snapshot},
-                tooling=_tooling_block(analysis=None, snapshot=snapshot),
+                tooling=_tooling_block(
+                    analysis=None,
+                    snapshot=snapshot,
+                    include_snapshot_fingerprint=include_snapshot_fingerprint,
+                ),
             )
 
         if op == "analyze":
@@ -218,7 +270,11 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 op=op,
                 req_id=req_id,
                 result=result,
-                tooling=_tooling_block(analysis=analysis_dict, snapshot=snapshot),
+                tooling=_tooling_block(
+                    analysis=analysis_dict,
+                    snapshot=snapshot,
+                    include_snapshot_fingerprint=include_snapshot_fingerprint,
+                ),
             )
 
         # Transform operations

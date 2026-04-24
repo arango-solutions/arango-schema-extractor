@@ -96,13 +96,51 @@
           "additionalProperties": false,
           "required": ["entities", "relationships"],
           "properties": {
+            "shardFamilies": {
+              "type": "array",
+              "description": "Groups of structurally-identical entities that share a common name suffix (PRD §6.2 bullet 5). Empty array means detection ran and found none.",
+              "items": { "$ref": "#/$defs/ShardFamily" }
+            },
             "entities": {
               "type": "object",
               "additionalProperties": {
                 "type": "object",
                 "required": ["style"],
                 "properties": {
-                  "style": { "type": "string", "enum": ["COLLECTION", "LABEL"] }
+                  "style": { "type": "string", "enum": ["COLLECTION", "LABEL"] },
+                  "collectionName": { "type": "string" },
+                  "typeField": { "type": "string" },
+                  "typeValue": { "type": "string" },
+                  "indexes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["type", "fields"],
+                      "properties": {
+                        "type": { "type": "string" },
+                        "fields": { "type": "array", "items": { "type": "string" } },
+                        "unique": { "type": "boolean" },
+                        "sparse": { "type": "boolean" },
+                        "name": { "type": "string" },
+                        "vci": { "type": "boolean" },
+                        "deduplicate": { "type": "boolean" },
+                        "storedValues": { "type": "array", "items": { "type": "string" } }
+                      }
+                    }
+                  },
+                  "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": ["field"],
+                      "properties": {
+                        "field": { "type": "string" },
+                        "indexed": { "type": "boolean" },
+                        "unique": { "type": "boolean" }
+                      }
+                    }
+                  },
+                  "tenantScope": { "$ref": "#/$defs/TenantScope" }
                 }
               }
             },
@@ -111,8 +149,41 @@
               "additionalProperties": {
                 "type": "object",
                 "required": ["style"],
+                "not": { "required": ["collectionName"] },
                 "properties": {
-                  "style": { "type": "string", "enum": ["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"] }
+                  "style": { "type": "string", "enum": ["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"] },
+                  "edgeCollectionName": { "type": "string" },
+                  "typeField": { "type": "string" },
+                  "typeValue": { "type": "string" },
+                  "indexes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["type", "fields"],
+                      "properties": {
+                        "type": { "type": "string" },
+                        "fields": { "type": "array", "items": { "type": "string" } },
+                        "unique": { "type": "boolean" },
+                        "sparse": { "type": "boolean" },
+                        "name": { "type": "string" },
+                        "vci": { "type": "boolean" },
+                        "deduplicate": { "type": "boolean" },
+                        "storedValues": { "type": "array", "items": { "type": "string" } }
+                      }
+                    }
+                  },
+                  "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": ["field"],
+                      "properties": {
+                        "field": { "type": "string" },
+                        "indexed": { "type": "boolean" },
+                        "unique": { "type": "boolean" }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -136,8 +207,288 @@
             },
             "detectedPatterns": { "type": "array", "items": { "type": "string" } },
             "warnings": { "type": "array", "items": { "type": "string" } },
-            "assumptions": { "type": "array", "items": { "type": "string" } }
+            "assumptions": { "type": "array", "items": { "type": "string" } },
+            "tenantScopeReport": {
+              "description": "Summary of per-entity tenant-scope classification applied to physicalMapping.entities[*].tenantScope. Null (or absent) when no tenant-root entity was detected — single-tenant graphs leave it null. Mirrors the null-default convention used by sibling diagnostic blocks (reconciliation, statistics).",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": ["tenantEntity"],
+                  "properties": {
+                    "tenantEntity": { "type": "string", "minLength": 1 },
+                    "denormScopedCount": { "type": "integer", "minimum": 0 },
+                    "traversalScopedCount": { "type": "integer", "minimum": 0 },
+                    "globalCount": { "type": "integer", "minimum": 0 },
+                    "tenantFieldRegex": { "type": "string" },
+                    "discovery": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "fromExplicitAnnotation": { "type": "integer", "minimum": 0 },
+                        "fromDenormFieldHeuristic": { "type": "integer", "minimum": 0 },
+                        "fromTraversalReachability": { "type": "integer", "minimum": 0 }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "shardingProfile": { "$ref": "#/$defs/ShardingProfile" },
+            "shardingProfileStatus": {
+              "description": "Mirror of shardingProfile.status for callers that only want to branch on ok/degraded without reading the full block. Absent when shardingProfile is absent (snapshot too minimal to classify).",
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "enum": ["ok", "degraded"] }
+              ]
+            },
+            "multitenancy": { "$ref": "#/$defs/Multitenancy" },
+            "multitenancyStatus": {
+              "description": "Mirror of multitenancy.status for callers that only want to branch on ok/degraded without reading the full block. Absent when multitenancy is absent (snapshot has no user collections).",
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "enum": ["ok", "degraded"] }
+              ]
+            }
           }
+        }
+      }
+    },
+
+    "ShardingProfile": {
+      "description": "Deployment-style classification for the analyzed database. Emitted when snapshot_physical_schema yielded at least one user collection; absent (null) when the snapshot is too minimal to classify. Primary style is exclusive (exactly one of OneShard / DisjointSmartGraph / SmartGraph / SatelliteGraph / Sharded); per-graph and per-collection evidence is always populated so downstream consumers can reason about shard boundaries without re-deriving them.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["style", "status"],
+          "properties": {
+            "style": {
+              "type": "string",
+              "enum": [
+                "OneShard",
+                "DisjointSmartGraph",
+                "SmartGraph",
+                "SatelliteGraph",
+                "Sharded"
+              ]
+            },
+            "status": { "type": "string", "enum": ["ok", "degraded"] },
+            "statusReason": { "type": "string" },
+            "database": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "name": { "type": "string" },
+                "sharding": { "type": "string" },
+                "replicationFactor": { "type": ["integer", "string"] },
+                "writeConcern": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "collectionKindCounts": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "smartgraph": { "type": "integer", "minimum": 0 },
+                "satellite": { "type": "integer", "minimum": 0 },
+                "regular": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "graphs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "isSmart": { "type": "boolean" },
+                  "isDisjoint": { "type": "boolean" },
+                  "isSatellite": { "type": "boolean" },
+                  "smartGraphAttribute": { "type": "string" },
+                  "vertexCollections": { "type": "array", "items": { "type": "string" } },
+                  "edgeCollections": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "satelliteCollections": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "oneShardLeader": { "type": "string" },
+            "collections": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["smartgraph", "satellite", "regular"]
+                  },
+                  "numberOfShards": { "type": "integer", "minimum": 1 },
+                  "shardKeys": { "type": "array", "items": { "type": "string" } },
+                  "shardingStrategy": { "type": "string" },
+                  "replicationFactor": { "type": ["integer", "string"] },
+                  "writeConcern": { "type": "integer", "minimum": 0 },
+                  "minReplicationFactor": { "type": "integer", "minimum": 0 },
+                  "distributeShardsLike": { "type": ["string", "null"] },
+                  "smartGraphAttribute": { "type": "string" },
+                  "isSmart": { "type": "boolean" },
+                  "isDisjoint": { "type": "boolean" },
+                  "isSatellite": { "type": "boolean" },
+                  "graphName": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "ShardFamily": {
+      "type": "object",
+      "description": "A group of structurally-identical entities (same property set) whose conceptual names share a common suffix (PRD §6.2 bullet 5). Captures the per-source / per-repository / per-stream collection-duplication pattern. NOT multitenancy (structural duplication, not per-customer isolation). Downstream consumers (NL→Cypher prompt builders, UI mapping panels) use the family grouping to emit UNION-aware guidance instead of silently picking one member.",
+      "additionalProperties": false,
+      "required": ["name", "suffix", "discriminator", "sharedProperties", "members"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Family label, derived from the common suffix with any leading underscore stripped (e.g. \"Document\" from suffix \"Document\")."
+        },
+        "suffix": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The verbatim common suffix shared by every member's conceptual name (e.g. \"Document\", \"_Golden_Entities\")."
+        },
+        "discriminator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["field", "collection_prefix"],
+              "description": "\"field\" when every member declares a candidate discriminator property (see SHARD_FAMILY_DISCRIMINATOR_FIELDS in defaults). \"collection_prefix\" otherwise — discriminatorValue then comes from the prefix portion of each member's conceptual name."
+            },
+            "field": {
+              "type": "string",
+              "description": "Required when source == \"field\". The property name carried by every member that distinguishes shards (e.g. \"repo\")."
+            }
+          }
+        },
+        "sharedProperties": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sorted property-name list common to all members. Identical to each member's property names by construction (the bucket key is the hash of this list)."
+        },
+        "members": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entity", "collectionName", "discriminatorValue"],
+            "properties": {
+              "entity": {
+                "type": "string",
+                "description": "Conceptual entity name (key in physicalMapping.entities)."
+              },
+              "collectionName": {
+                "type": "string",
+                "description": "Underlying ArangoDB collection name."
+              },
+              "discriminatorValue": {
+                "type": "string",
+                "description": "The portion of the entity name preceding the family suffix (e.g. \"IBEX\" for \"IBEXDocument\" with suffix \"Document\"). Empty string is permitted in the degenerate case where the entity name equals the suffix."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "Multitenancy": {
+      "description": "Multitenancy classification for the analyzed database (PRD §6.2 bullet 4). Layers on top of shardingProfile: when shardingProfile.style == \"DisjointSmartGraph\" the smart attribute is the tenant key with physicalEnforcement=true. Otherwise the analyzer probes shard keys, candidate discriminator fields, collection naming patterns, and the database name in priority order. Absent (null) when the snapshot has no user collections.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["style", "status", "physicalEnforcement", "tenantKey", "evidence"],
+          "properties": {
+            "style": {
+              "type": "string",
+              "enum": [
+                "none",
+                "disjoint_smartgraph",
+                "shard_key",
+                "discriminator_field",
+                "collection_per_tenant",
+                "database_per_tenant",
+                "unknown_single_db"
+              ],
+              "description": "Exclusive tenancy-style classification. \"none\" means no signal triggered (single-tenant database). \"unknown_single_db\" is a hint that this single-database snapshot looks tenant-named; an orchestrator must confirm by aggregating across databases."
+            },
+            "status": { "type": "string", "enum": ["ok", "degraded"] },
+            "physicalEnforcement": {
+              "type": "boolean",
+              "description": "true when tenant isolation is enforced by the storage layer (shard key, smart graph, per-tenant collection / database). false for discriminator_field — convention only, application code must enforce."
+            },
+            "tenantKey": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Property name(s) that identify a tenant (e.g. [\"tenantId\"], [\"smartAttr\"]). Empty when the style does not surface a single key (e.g. collection_per_tenant)."
+            },
+            "tenantKeyCollections": {
+              "type": "array",
+              "description": "Per-collection evidence that the tenant key was observed. Populated by shard_key and discriminator_field styles; omitted otherwise.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["collection"],
+                "properties": {
+                  "collection": { "type": "string" },
+                  "field": { "type": "string" },
+                  "shardKey": { "type": "string" },
+                  "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "distinctValues": { "type": "integer", "minimum": 0 },
+                  "sampleValues": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "evidence": {
+              "type": "object",
+              "description": "Free-form, style-specific signals that drove the classification. Always present so downstream consumers can audit / override. Shape varies by style; consumers should treat unknown keys as additive.",
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+
+    "TenantScope": {
+      "type": "object",
+      "description": "Per-entity tenant-isolation classification. Tells downstream consumers (transpilers, NL\u2192Cypher pipelines) how to enforce tenant boundaries when querying this collection. Operators may set this explicitly to override heuristic detection; explicit annotations always win.",
+      "additionalProperties": false,
+      "required": ["role"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["tenant_root", "tenant_scoped", "global"],
+          "description": "tenant_root: anchors the tenant hierarchy (typically the Tenant collection itself). tenant_scoped: belongs to a single tenant; query MUST constrain to one tenant either via the denormalised tenantField or via traversal from the tenant root. global: cross-tenant reference data (e.g. CVE, AppVersion); queries MUST NOT include any tenant filter."
+        },
+        "tenantField": {
+          "type": "string",
+          "description": "When role is tenant_scoped and the entity carries a denormalised tenant reference, the field name (e.g. TENANT_ID). Consumers should filter on this field with the tenant key for efficient single-collection queries. Omit for traversal-only scoped entities."
+        },
+        "tenantEntity": {
+          "type": "string",
+          "description": "Conceptual name of the tenant root for this scoping (typically Tenant). Required when role is tenant_scoped; omitted for tenant_root and global."
         }
       }
     },

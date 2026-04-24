@@ -27,6 +27,32 @@ def _is_transient(exc: SchemaAnalyzerError) -> bool:
     return exc.code in _TRANSIENT_CODES
 
 
+def _retry_decision(
+    exc: SchemaAnalyzerError,
+    *,
+    attempt: int,
+    max_retries: int,
+    base_delay: float,
+) -> float:
+    """Decide whether to retry a transient provider error and return the
+    delay (in seconds) before the next attempt.
+
+    Returns ``0.0`` when the caller must re-raise instead of retrying.
+    Centralises the policy so the sync and async paths cannot drift apart.
+    """
+    if not _is_transient(exc) or attempt >= max_retries:
+        return 0.0
+    delay = base_delay * (2**attempt)
+    logger.warning(
+        "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
+        attempt + 1,
+        max_retries + 1,
+        delay,
+        exc,
+    )
+    return delay
+
+
 def _repair_prompt(*, validation_errors: list[str], previous_json: str) -> str:
     errs = "\n".join(f"- {e}" for e in validation_errors) if validation_errors else "- (unknown)"
     return (
@@ -90,17 +116,10 @@ def _call_with_retry(
         try:
             return provider.generate(model=model, system=system, prompt=prompt, timeout_ms=timeout_ms)
         except SchemaAnalyzerError as e:
-            if not _is_transient(e) or attempt >= max_retries:
+            delay = _retry_decision(e, attempt=attempt, max_retries=max_retries, base_delay=base_delay)
+            if delay <= 0:
                 raise
             last_exc = e
-            delay = base_delay * (2**attempt)
-            logger.warning(
-                "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
-                attempt + 1,
-                max_retries + 1,
-                delay,
-                e,
-            )
             time.sleep(delay)
     raise last_exc  # pragma: no cover
 
@@ -160,17 +179,10 @@ async def _async_call_with_retry(
         try:
             return await provider.agenerate(model=model, system=system, prompt=prompt, timeout_ms=timeout_ms)
         except SchemaAnalyzerError as e:
-            if not _is_transient(e) or attempt >= max_retries:
+            delay = _retry_decision(e, attempt=attempt, max_retries=max_retries, base_delay=base_delay)
+            if delay <= 0:
                 raise
             last_exc = e
-            delay = base_delay * (2**attempt)
-            logger.warning(
-                "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
-                attempt + 1,
-                max_retries + 1,
-                delay,
-                e,
-            )
             await asyncio.sleep(delay)
     raise last_exc  # pragma: no cover
 

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
-EntityMappingStyle = Literal["COLLECTION", "LABEL"]
-RelationshipMappingStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
 
 
 class AnalysisMetadata(BaseModel):

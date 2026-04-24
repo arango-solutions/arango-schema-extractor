@@ -45,3 +45,36 @@ See the JSON Schema files:
 - `examples/request.analyze.json`
 - `examples/response.analyze.json`
 
+## Trust model & operator-side hardening
+
+`run_tool` was originally written for a **trusted local caller** (CLI, in-process
+library, your own MCP server). Every request field that drives I/O is
+honoured as-is. When you expose this contract over a network boundary
+(MCP server, HTTP gateway, agent-to-agent RPC), the *operator* — not the
+caller — is responsible for the trust boundary. The library ships two
+opt-in environment variables to let you tighten that boundary without
+forking the contract:
+
+| Env var | Purpose | Behaviour when unset |
+|---|---|---|
+| `SCHEMA_ANALYZER_ALLOWED_HOSTS` | Comma-separated `host[:port]` list. `connection.url` is rejected unless its host (or `host:port`) appears in the list. | All hosts allowed (preserves CLI ergonomics). |
+| `SCHEMA_ANALYZER_CACHE_ROOT` | Absolute path. `analysisOptions.cache.directory` (after resolution of `~` and `..`) must lie under this root. | Any caller-supplied directory is accepted. |
+
+Additional caps are encoded directly in `request.schema.json`:
+
+- `connection.url` ≤ 2048 chars; passwords / API keys ≤ 1024 chars; system
+  prompts ≤ 64 KiB; arrays inside `input.analysis.*` capped at 50–100 K
+  items.
+- `analysisOptions.timeoutMs` ≤ 600 000 (10 min);
+  `sampleLimitPerCollection` ≤ 1000; `maxRepairAttempts` ≤ 10;
+  `cacheTtlSeconds` ≤ 31 536 000 (1 year).
+
+`input.snapshot` (the free-form snapshot blob used by `export` / `docs` /
+`owl`) cannot be size-bounded by JSON Schema alone. Hosts that expose
+this contract to untrusted callers SHOULD enforce a request-body cap at
+the transport layer (e.g. a few MiB).
+
+Use `passwordEnvVar` / `apiKeyEnvVar` rather than inlining secrets, so
+that request payloads can be safely logged. The analyzer never echoes
+secret material into the response.
+

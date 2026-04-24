@@ -59,41 +59,25 @@ from .defaults import (
     MIN_SHARD_FAMILY_SUFFIX_LEN,
     SHARD_FAMILY_DISCRIMINATOR_FIELDS,
 )
+from .utils import entity_property_names
 
 logger = logging.getLogger(__name__)
 
 
 def _entity_property_names(entity: dict[str, Any]) -> list[str]:
-    """Return the sorted property-name list for an entity mapping.
+    """Return the **sorted** property-name list for an entity mapping.
 
-    The shape returned by ``infer_baseline_from_snapshot`` and by the
-    LLM workflow uses ``properties`` as a dict keyed by conceptual
-    property name. We tolerate the (rare) list-of-dicts shape as well —
-    older fixtures occasionally still carry it.
+    Thin wrapper over :func:`schema_analyzer.utils.entity_property_names`
+    that imposes the sort order required by shard-family bucketing
+    (the bucket key is ``hash(sorted(properties))``).
     """
-    props = entity.get("properties")
-    if isinstance(props, dict):
-        return sorted(str(k) for k in props)
-    if isinstance(props, list):
-        out: list[str] = []
-        for item in props:
-            if isinstance(item, dict) and isinstance(item.get("name"), str):
-                out.append(item["name"])
-        return sorted(out)
-    return []
+    return sorted(entity_property_names(entity))
 
 
 def _has_field(entity: dict[str, Any], field: str) -> bool:
     """Case-insensitive check: does the entity mapping declare ``field``?"""
     target = field.lower()
-    props = entity.get("properties")
-    if isinstance(props, dict):
-        return any(str(k).lower() == target for k in props)
-    if isinstance(props, list):
-        for item in props:
-            if isinstance(item, dict) and str(item.get("name", "")).lower() == target:
-                return True
-    return False
+    return any(name.lower() == target for name in entity_property_names(entity))
 
 
 def _word_boundary_starts(name: str) -> set[int]:

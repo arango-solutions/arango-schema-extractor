@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .utils import normalize_analysis_dict
+
 if TYPE_CHECKING:
     from .types import AnalysisResult
 
@@ -11,10 +13,10 @@ def generate_schema_docs(analysis: AnalysisResult | dict[str, Any]) -> str:
     Generate human-readable Markdown documentation from an analysis result.
     Accepts either AnalysisResult (pydantic) or a plain dict with the same keys.
     """
-    data = analysis.model_dump() if hasattr(analysis, "model_dump") else analysis
+    data = normalize_analysis_dict(analysis)
 
-    cs = data.get("conceptual_schema") or data.get("conceptualSchema") or {}
-    pm = data.get("physical_mapping") or data.get("physicalMapping") or {}
+    cs = data.get("conceptualSchema") or {}
+    pm = data.get("physicalMapping") or {}
     md = data.get("metadata") or {}
 
     entities = cs.get("entities", []) or []

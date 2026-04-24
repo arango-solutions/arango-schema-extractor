@@ -30,6 +30,7 @@ def build_app():
     FastMCP = _require_fastmcp()
 
     from .tool import run_tool
+    from .tool_contract_v1 import CONTRACT_VERSION
 
     mcp = FastMCP(
         "arangodb-schema-analyzer",
@@ -54,14 +55,14 @@ def build_app():
             req = json.loads(request_json)
         except json.JSONDecodeError as e:
             return {
-                "contractVersion": "1",
+                "contractVersion": CONTRACT_VERSION,
                 "operation": None,
                 "ok": False,
                 "error": {"code": "INVALID_REQUEST", "message": f"Invalid JSON: {e}"},
             }
         if not isinstance(req, dict):
             return {
-                "contractVersion": "1",
+                "contractVersion": CONTRACT_VERSION,
                 "operation": None,
                 "ok": False,
                 "error": {"code": "INVALID_REQUEST", "message": "request_json must be a JSON object"},

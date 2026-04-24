@@ -48,8 +48,17 @@ from .defaults import (
     TENANT_DATABASE_NAMING_PATTERNS,
     TENANT_DISCRIMINATOR_FIELDS,
 )
+from .utils import entity_property_names
 
 logger = logging.getLogger(__name__)
+
+# Pre-compile the default tenant-collection naming patterns once at import
+# time so ``_detect_collection_per_tenant`` does not pay re.compile() cost
+# on every call. Callers passing a custom ``patterns`` tuple still get
+# per-call compilation (rare path).
+_DEFAULT_TENANT_COLLECTION_PATTERNS_COMPILED: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p) for p in TENANT_COLLECTION_NAMING_PATTERNS
+)
 
 MultitenancyStyle = Literal[
     "none",
@@ -88,17 +97,13 @@ def _user_collections(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _entity_property_names(entity: dict[str, Any]) -> set[str]:
-    """Set of property names declared on a conceptual entity mapping."""
-    props = entity.get("properties")
-    if isinstance(props, dict):
-        return {str(k) for k in props}
-    if isinstance(props, list):
-        out: set[str] = set()
-        for item in props:
-            if isinstance(item, dict) and isinstance(item.get("name"), str):
-                out.add(item["name"])
-        return out
-    return set()
+    """Set of property names declared on a conceptual entity mapping.
+
+    Thin wrapper over :func:`schema_analyzer.utils.entity_property_names`
+    that returns a set rather than a list (multitenancy detection only
+    needs membership tests, never order).
+    """
+    return set(entity_property_names(entity))
 
 
 def _collection_to_entity_index(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -388,7 +393,10 @@ def _detect_collection_per_tenant(
     """
     if len(user_cols) < 2:
         return None
-    compiled = [re.compile(p) for p in patterns]
+    if patterns is TENANT_COLLECTION_NAMING_PATTERNS:
+        compiled: list[re.Pattern[str]] = list(_DEFAULT_TENANT_COLLECTION_PATTERNS_COMPILED)
+    else:
+        compiled = [re.compile(p) for p in patterns]
 
     by_tenant: dict[str, set[str]] = {}
     by_base: dict[str, set[str]] = {}

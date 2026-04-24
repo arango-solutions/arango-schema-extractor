@@ -13,6 +13,8 @@ from .defaults import (
     DEFAULT_ARANGO_URL,
     DEFAULT_ARANGO_USER,
     DEFAULT_EVAL_DATABASE,
+    DEFAULT_EVAL_SAMPLE_LIMIT,
+    DEFAULT_EVAL_SCALE,
     DEFAULT_TIMEOUT_MS,
     TOOL_ERROR_EXIT_CODE,
 )
@@ -112,9 +114,14 @@ def main(argv: list[str] | None = None) -> int:
     eval_p.add_argument("--provider", default=None, help="LLM provider name.")
     eval_p.add_argument("--model", default=None, help="LLM model name.")
     eval_p.add_argument("--domains", default=None, help="Comma-separated domain names (default: all).")
-    eval_p.add_argument("--sample-limit", type=int, default=3, help="Samples per collection.")
+    eval_p.add_argument(
+        "--sample-limit",
+        type=int,
+        default=DEFAULT_EVAL_SAMPLE_LIMIT,
+        help="Samples per collection.",
+    )
     eval_p.add_argument("--timeout-ms", type=int, default=DEFAULT_TIMEOUT_MS, help="Timeout per analysis (ms).")
-    eval_p.add_argument("--scale", type=int, default=5, help="Scale factor for seeded data.")
+    eval_p.add_argument("--scale", type=int, default=DEFAULT_EVAL_SCALE, help="Scale factor for seeded data.")
     eval_p.add_argument("--report", default=None, help="Save JSON report to this path.")
     eval_p.add_argument("--baseline", default=None, help="Baseline report path for comparison.")
     eval_p.add_argument("--no-cleanup", dest="cleanup", action="store_false", default=True, help="Keep eval database.")

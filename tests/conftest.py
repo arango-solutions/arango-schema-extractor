@@ -57,3 +57,56 @@ def wait_for_arango(sys_db, timeout_s: float = 20.0):
             last_err = e
             time.sleep(0.5)
     raise RuntimeError(f"ArangoDB not ready after {timeout_s}s: {last_err}")
+
+
+def ensure_fresh_database(sys_db, db_name: str) -> None:
+    """Drop ``db_name`` if it exists and recreate it.
+
+    Centralises the ``has_database / delete_database / create_database``
+    dance every integration test used to duplicate. Safe to call
+    repeatedly; ignores errors during the delete (e.g. not-found races).
+    """
+    import contextlib
+
+    if sys_db.has_database(db_name):
+        with contextlib.suppress(Exception):
+            sys_db.delete_database(db_name)
+    sys_db.create_database(db_name)
+
+
+@pytest.fixture
+def fresh_database(request):
+    """Function-scoped fixture that yields a fresh ArangoDB handle.
+
+    Usage:
+
+        def test_something(fresh_database):
+            db = fresh_database("my_test_db")
+            ...
+
+    The database is created fresh at request time and dropped at
+    teardown. Safe to call multiple times in one test; each call yields
+    an independent database. Skips automatically when integration tests
+    are disabled (``RUN_INTEGRATION != "1"``).
+    """
+    import contextlib
+
+    skip_if_integration_not_enabled()
+    client, sys_db = connect_root()
+    wait_for_arango(sys_db)
+    created: list[str] = []
+
+    def _make(db_name: str):
+        ensure_fresh_database(sys_db, db_name)
+        created.append(db_name)
+        return client.db(
+            db_name,
+            username=env("ARANGO_USER", "root"),
+            password=env("ARANGO_PASS", "openSesame"),
+        )
+
+    yield _make
+
+    for name in created:
+        with contextlib.suppress(Exception):
+            sys_db.delete_database(name)

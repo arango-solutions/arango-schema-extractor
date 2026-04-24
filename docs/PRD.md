@@ -305,6 +305,10 @@ Full **edge-interval time travel** for every conceptual entity (AOE-style `creat
 - **Trust boundary — LLM:** When a provider is configured, **physical schema snapshots** (and optional samples) may be transmitted to the vendor API. The PRD treats this as **customer-configured data egress**; documentation and the tool contract must make that explicit. Redaction modes (strip samples, mask field names) are a future hardening item.
 - **Untrusted structured output:** Conceptual and mapping payloads may originate from an LLM. Downstream use (e.g. AQL helpers) assumes **validated** mapping shapes; stricter validation (allowlists for collection names and attribute keys from the snapshot) is encouraged where security goals exceed “best effort.”
 - **Filesystem cache:** Cached analysis may contain sensitive schema metadata; deployments should restrict cache directory permissions and disk encryption as appropriate.
+- **Operator-side hardening for hosted MCP/RPC surfaces:** Two opt-in environment variables let operators tighten the trust boundary without modifying the contract:
+  - `SCHEMA_ANALYZER_ALLOWED_HOSTS` — comma-separated `host[:port]` allowlist for `connection.url` (rejects anything else with `INVALID_ARGUMENT`).
+  - `SCHEMA_ANALYZER_CACHE_ROOT` — absolute path; resolved `analysisOptions.cache.directory` values must lie under it, blocking path-traversal writes via the v1 contract.
+  Both default to **off** to preserve local CLI ergonomics; turn them on whenever `run_tool` is exposed to non-local callers. See `docs/tool-contract/v1/README.md` for the full trust-model write-up.
 
 #### **4.4. Error Handling**
 
@@ -333,7 +337,7 @@ Tunable defaults are centralized in `defaults.py`:
 - Unit tests with 65%+ coverage threshold
 - Integration tests (opt-in via `RUN_INTEGRATION=1`) against Docker ArangoDB
 - Golden snapshot tests for determinism validation
-- CI: lint (ruff + mypy), test matrix (Python 3.10–3.12), integration on PRs
+- CI: lint (ruff + mypy), test matrix (Python 3.10–3.13), integration on PRs
 
 #### **4.7. Tool contract fidelity**
 
@@ -344,27 +348,39 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
 ### **5. Architecture**
 
 ```
-┌─────────────────────────────────────────────────┐
-│          CLI / Tool API  │  MCP adapter (opt.)   │
-│       (cli.py / tool.py) │  (future, §3.11)      │
-├─────────────────────────────────────────────────┤
-│              AgenticSchemaAnalyzer               │
-│                (analyzer.py)                     │
-├──────────┬──────────────┬───────────────────────┤
-│ Snapshot │   Workflow   │   Baseline Inference   │
-│(snapshot)│  (workflow)  │     (baseline.py)      │
-├──────────┤              ├───────────────────────┤
-│          │  Providers   │                       │
-│          │  (providers/)│    Validation         │
-│          │              │   (validation.py)     │
-├──────────┴──────────────┴───────────────────────┤
-│   ConceptualSchema │ PhysicalMapping │ Cache    │
-│   (conceptual.py)  │  (mapping.py)  │(cache.py)│
-├─────────────────────────────────────────────────┤
-│          Exports: docs / export / owl           │
-│     (docs.py / exports.py / owl_export.py)      │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│   CLI       │  Tool API (run_tool)  │  MCP stdio server  │
+│  (cli.py)   │      (tool.py)        │   (mcp_server.py)  │
+├──────────────────────────────────────────────────────────┤
+│                  AgenticSchemaAnalyzer                   │
+│                      (analyzer.py)                       │
+├──────────┬──────────────┬───────────┬────────────────────┤
+│ Snapshot │   Workflow   │  Baseline │  Reconciliation    │
+│(snapshot)│  (workflow)  │ inference │  + LLM-output      │
+│          │              │ (baseline)│  allowlist         │
+│          │              │           │  (reconcile.py)    │
+├──────────┤              ├───────────┴────────────────────┤
+│          │  Providers   │  Detectors:                    │
+│          │  (providers/)│  • shardingProfile  (0.5.0)    │
+│          │              │  • multitenancy     (0.6.0)    │
+│          │              │  • shardFamilies    (0.6.0)    │
+│          │              │  • tenantScope      (0.4.0)    │
+│          │              │  • statistics, reconcile…      │
+├──────────┴──────────────┴────────────────────────────────┤
+│   ConceptualSchema │ PhysicalMapping │ Cache + Validation │
+│   (conceptual.py)  │  (mapping.py)   │ (cache, validation)│
+├──────────────────────────────────────────────────────────┤
+│       Exports: docs / cypher / owl turtle                │
+│     (docs.py / exports.py / owl_export.py)               │
+└──────────────────────────────────────────────────────────┘
 ```
+
+The CLI, the in-process `run_tool` API, and the MCP stdio server are all
+peers that funnel into the same `AgenticSchemaAnalyzer` and the same v1
+contract. Operator-side hardening (`SCHEMA_ANALYZER_ALLOWED_HOSTS`,
+`SCHEMA_ANALYZER_CACHE_ROOT`) applies uniformly to every entrypoint
+because it is enforced inside `tool.py` / `cache.py`, not at the
+adapter.
 
 ---
 
@@ -536,7 +552,7 @@ Fields in `docs/tool-contract/v1/request.schema.json` **must either be implement
 - Confidence calibration from eval feedback loops
 - Streaming/incremental analysis for large databases
 - Custom provider SDK support beyond OpenAI/Anthropic/OpenRouter
-- **MCP packaging** — Standalone MCP server or module as in §3.11
+- ~~**MCP packaging** — Standalone MCP server or module as in §3.11~~ _Shipped in 0.4.0_ as the `arangodb-schema-analyzer-mcp` stdio server (`[mcp]` extra; see §3.11).
 
 ---
 

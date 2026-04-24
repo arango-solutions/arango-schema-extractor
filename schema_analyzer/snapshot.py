@@ -16,6 +16,7 @@ from .defaults import (
     MIN_TYPE_FIELD_COVERAGE_FRACTION,
     MIN_TYPE_FIELD_DISTINCT_VALUES,
     SAMPLE_VALUE_TOP_K,
+    SNAPSHOT_FORMAT_VERSION,
 )
 from .utils import pascal_case, sha256_hex, singularize, stable_dumps
 
@@ -779,7 +780,7 @@ def snapshot_physical_schema(
     else:
         collections = {}
     snapshot: dict[str, Any] = {
-        "version": 1,
+        "version": SNAPSHOT_FORMAT_VERSION,
         "generated_at": None,
         "collections": [],
         "graphs": [],

@@ -23,15 +23,22 @@ Optional LLM provider extras:
 ```bash
 python -m pip install -e ".[openai]"
 python -m pip install -e ".[anthropic]"
+python -m pip install -e ".[openrouter]"
 ```
 
-OpenRouter is also supported and requires no extra SDK (uses stdlib `urllib`).
+OpenRouter actually requires no extra SDK (uses stdlib `urllib`); the `[openrouter]` extra exists as a documentation marker only and pulls in nothing.
 
 **MCP (Model Context Protocol)** — optional stdio server wrapping the v1 JSON tool contract:
 
 ```bash
 python -m pip install -e ".[mcp]"
 arangodb-schema-analyzer-mcp
+```
+
+**Development extras** (pytest, ruff, mypy, etc.):
+
+```bash
+python -m pip install -e ".[dev]"
 ```
 
 If you don't install a provider SDK (or you don't provide an API key), analysis degrades gracefully to deterministic baseline inference.
@@ -81,13 +88,13 @@ cat docs/tool-contract/v1/examples/request.analyze.json | arangodb-schema-analyz
 ### CLI options
 
 ```
-arangodb-schema-analyzer [--request FILE] [--out FILE] [--pretty] [-v]
+arangodb-schema-analyzer [--request FILE] [--out FILE] [--pretty] [-v|--verbose]
 ```
 
 - `--request FILE` — path to request JSON (default: read from stdin)
 - `--out FILE` — write response JSON to file (default: stdout)
 - `--pretty` — pretty-print JSON output
-- `-v` — enable verbose logging
+- `-v` / `--verbose` — enable verbose logging
 
 ## Evaluation CLI
 
@@ -164,7 +171,7 @@ Selected parameters:
 | `DEFAULT_REVIEW_THRESHOLD` | 0.6 | Confidence threshold for `review_required` |
 | `DEFAULT_CACHE_TTL_SECONDS` | 86400 | Cache TTL (seconds) |
 | `TENANT_SCOPE_ROOT_NAMES` | `("Tenant",)` | Entity names treated as tenant roots |
-| `TENANT_SCOPE_FIELD_REGEX` | `^tenant[_-]?(id\|key)$` | Denormalised tenant-reference field detector |
+| `TENANT_SCOPE_FIELD_REGEX` | `^tenant[_-]?(id&#124;key)$` | Denormalised tenant-reference field detector (regex pipe escaped as `&#124;` to avoid breaking the markdown table) |
 | `MIN_TENANT_FIELD_COVERAGE_FRACTION` | 0.5 | Threshold for `discriminator_field` multitenancy |
 | `MIN_SHARD_FAMILY_SIZE` | 2 | Min members for a shard-family group |
 

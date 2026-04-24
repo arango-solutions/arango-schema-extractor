@@ -10,7 +10,7 @@ from .snapshot import (
     _type_values_for_field,
     infer_entity_type_from_collection_name,
 )
-from .utils import pascal_case
+from .utils import iter_edge_definitions, pascal_case
 
 
 def _choose_type_field(col: dict[str, Any], *, is_edge: bool) -> str | None:
@@ -416,12 +416,8 @@ def _enrich_endpoints_from_graphs(
     for g in graphs_detailed:
         if not isinstance(g, dict):
             continue
-        for edef in g.get("edge_definitions") or []:
-            if not isinstance(edef, dict):
-                continue
-            ec = edef.get("collection")
-            if not ec:
-                continue
+        for edef in iter_edge_definitions(g):
+            ec = edef["collection"]
             edge_def_map[ec] = {
                 "from_collections": edef.get("from") or [],
                 "to_collections": edef.get("to") or [],

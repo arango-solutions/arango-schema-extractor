@@ -4,7 +4,7 @@ from schema_analyzer import AgenticSchemaAnalyzer
 from schema_analyzer.eval import PhysicalVariant, list_domains, load_domain_spec, materialize_domain_variant
 from schema_analyzer.snapshot import snapshot_physical_schema
 
-from ..conftest import connect_root, env, skip_if_integration_not_enabled, wait_for_arango
+from ..conftest import env
 
 pytestmark = pytest.mark.integration
 
@@ -16,21 +16,9 @@ pytestmark = pytest.mark.integration
         PhysicalVariant(name="v_generic_generic", entity_style="GENERIC_WITH_TYPE", rel_style="GENERIC_WITH_TYPE"),
     ],
 )
-def test_materialize_and_snapshot_domains(variant):
-    skip_if_integration_not_enabled()
-
-    client, sys_db = connect_root()
-    wait_for_arango(sys_db)
-    db_name = env("ARANGO_DB", "schema_analyzer_it")
-    # Use a per-variant DB to avoid cross-test interference.
-    db_name = f"{db_name}_{variant.name}"
-    if sys_db.has_database(db_name):
-        import contextlib
-
-        with contextlib.suppress(Exception):
-            sys_db.delete_database(db_name)
-    sys_db.create_database(db_name)
-    db = client.db(db_name, username=env("ARANGO_USER", "root"), password=env("ARANGO_PASS", "openSesame"))
+def test_materialize_and_snapshot_domains(variant, fresh_database):
+    base_db = env("ARANGO_DB", "schema_analyzer_it")
+    db = fresh_database(f"{base_db}_{variant.name}")
 
     domains = list_domains()
     assert domains, "no domain specs found"

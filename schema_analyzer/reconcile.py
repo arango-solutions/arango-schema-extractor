@@ -27,6 +27,75 @@ from .baseline import infer_baseline_from_snapshot
 RECONCILIATION_STRATEGY = "baseline_per_missing_collection"
 
 
+def snapshot_collection_names(snapshot: dict[str, Any]) -> set[str]:
+    """
+    Return the set of physical collection names present in ``snapshot``.
+
+    Used by :func:`strip_unknown_collection_names` to allowlist
+    LLM-supplied ``collectionName`` / ``edgeCollectionName`` values
+    before they are persisted in the analysis output.
+    """
+    out: set[str] = set()
+    for c in snapshot.get("collections") or []:
+        if isinstance(c, dict):
+            name = c.get("name")
+            if isinstance(name, str) and name:
+                out.add(name)
+    return out
+
+
+def strip_unknown_collection_names(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> list[str]:
+    """
+    Remove any ``collectionName`` / ``edgeCollectionName`` value supplied
+    by the LLM that does not correspond to a real collection in
+    ``snapshot``. Returns the list of warning strings to append to
+    ``metadata.warnings`` (one per stripped reference).
+
+    This guards against LLM hallucinations leaking into the
+    ``physicalMapping`` and being treated as authoritative by downstream
+    consumers (transpilers, NL→Cypher prompt builders, etc.). Stripped
+    entries become eligible for backfill by
+    :func:`reconcile_physical_mapping`.
+    """
+    allowed = snapshot_collection_names(snapshot)
+    if not allowed:
+        return []
+    pm = data.get("physicalMapping")
+    if not isinstance(pm, dict):
+        return []
+    warnings: list[str] = []
+
+    entities = pm.get("entities")
+    if isinstance(entities, dict):
+        for ent_name, entry in entities.items():
+            if not isinstance(entry, dict):
+                continue
+            col = entry.get("collectionName")
+            if isinstance(col, str) and col and col not in allowed:
+                warnings.append(
+                    f"Stripped LLM-hallucinated collectionName {col!r} from entity {ent_name!r}"
+                )
+                entry.pop("collectionName", None)
+
+    relationships = pm.get("relationships")
+    if isinstance(relationships, dict):
+        for rel_name, entry in relationships.items():
+            if not isinstance(entry, dict):
+                continue
+            for field in ("edgeCollectionName", "collectionName"):
+                col = entry.get(field)
+                if isinstance(col, str) and col and col not in allowed:
+                    warnings.append(
+                        f"Stripped LLM-hallucinated {field} {col!r} from relationship {rel_name!r}"
+                    )
+                    entry.pop(field, None)
+
+    return warnings
+
+
 def collections_referenced_by_mapping(physical_mapping: dict[str, Any]) -> set[str]:
     """
     Return the set of physical collection names that are referenced by at
