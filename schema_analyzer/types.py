@@ -68,6 +68,14 @@ class AnalysisMetadata(BaseModel):
     # top-level key. Both absent when the snapshot has no user collections.
     multitenancy: dict[str, Any] | None = Field(default=None, alias="multitenancy")
     multitenancy_status: str | None = Field(default=None, alias="multitenancyStatus")
+    # Populated by the Arango product detector (arango_products.py).
+    # Carries any first-party Arango product artefacts found in the
+    # snapshot (today: Autograph corpus + KG projects). Empty
+    # ``arango_product`` + ``arango_product_status="none"`` when no
+    # product was detected. ``status="ok"`` with a populated
+    # ``arango_product`` block when one or more projects were found.
+    arango_product: dict[str, Any] | None = Field(default=None, alias="arangoProduct")
+    arango_product_status: str | None = Field(default=None, alias="arangoProductStatus")
 
 
 class AnalysisResult(BaseModel):

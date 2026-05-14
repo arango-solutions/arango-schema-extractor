@@ -1,4 +1,9 @@
 from .analyzer import AgenticSchemaAnalyzer
+from .arango_products import (
+    ArangoProductReport,
+    AutographProject,
+    detect_arango_products,
+)
 from .conceptual import ConceptualSchema
 from .docs import generate_schema_docs
 from .exports import export_mapping
@@ -14,6 +19,9 @@ from .tool import run_tool
 
 __all__ = [
     "AgenticSchemaAnalyzer",
+    "ArangoProductReport",
+    "AutographProject",
+    "detect_arango_products",
     "ConceptualSchema",
     "PhysicalMapping",
     "generate_schema_docs",

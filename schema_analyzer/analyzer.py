@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
+from .arango_products import detect_arango_products
 from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
@@ -44,6 +45,18 @@ from .utils import analysis_cache_storage_key, stable_dumps
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
 
 logger = logging.getLogger(__name__)
+
+
+def _arango_product_dict_for(snapshot: dict) -> dict | None:
+    """Return the arango_product metadata block for a snapshot."""
+    report = detect_arango_products(snapshot)
+    return report.to_dict() if not report.is_empty else None
+
+
+def _arango_product_status_for(snapshot: dict) -> str:
+    """'ok' when any product detected, 'none' otherwise."""
+    return "ok" if not detect_arango_products(snapshot).is_empty else "none"
+
 
 _PROVENANCE_CACHE_STRIP = (
     "run_id",
@@ -518,6 +531,8 @@ class AgenticSchemaAnalyzer:
                 sharding_profile_status=stats_holder["metadata"].get("shardingProfileStatus"),
                 multitenancy=stats_holder["metadata"].get("multitenancy"),
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
+                arango_product=_arango_product_dict_for(snapshot),
+                arango_product_status=_arango_product_status_for(snapshot),
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
@@ -756,6 +771,8 @@ class AgenticSchemaAnalyzer:
             tenant_scope_report=data.get("metadata", {}).get("tenantScopeReport")
             if isinstance(data.get("metadata"), dict)
             else None,
+            arango_product=_arango_product_dict_for(snapshot),
+            arango_product_status=_arango_product_status_for(snapshot),
             sharding_profile=data.get("metadata", {}).get("shardingProfile")
             if isinstance(data.get("metadata"), dict)
             else None,

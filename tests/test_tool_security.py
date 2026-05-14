@@ -60,9 +60,7 @@ def test_h2_tooling_includes_snapshot_fingerprint_by_default():
 
 def test_h2_tooling_omits_snapshot_fingerprint_when_disabled():
     snap = {"version": 1, "collections": []}
-    block = _tooling_block(
-        analysis=None, snapshot=snap, include_snapshot_fingerprint=False
-    )
+    block = _tooling_block(analysis=None, snapshot=snap, include_snapshot_fingerprint=False)
     assert "snapshotFingerprint" not in block
     assert block["snapshotVersion"] == 1
 
@@ -132,9 +130,7 @@ def test_m2_cache_root_blocks_dotdot_traversal(tmp_path, monkeypatch):
 
 def test_m2_cache_unset_env_preserves_legacy_behavior(tmp_path, monkeypatch):
     monkeypatch.delenv("SCHEMA_ANALYZER_CACHE_ROOT", raising=False)
-    cache = cache_from_config(
-        {"type": "filesystem", "directory": str(tmp_path / "anywhere")}
-    )
+    cache = cache_from_config({"type": "filesystem", "directory": str(tmp_path / "anywhere")})
     assert cache is not None
 
 
@@ -147,9 +143,7 @@ def test_m3_unset_env_allows_any_host(monkeypatch):
 
 
 def test_m3_allowed_host_accepted(monkeypatch):
-    monkeypatch.setenv(
-        "SCHEMA_ANALYZER_ALLOWED_HOSTS", "db.internal:8529,other.example"
-    )
+    monkeypatch.setenv("SCHEMA_ANALYZER_ALLOWED_HOSTS", "db.internal:8529,other.example")
     _check_url_allowed("http://db.internal:8529/")
 
 
