@@ -66,9 +66,7 @@ _KG_VERTEX_SUFFIXES = frozenset({"Chunks", "Communities", "Documents", "Entities
 # Strong-marker gate: at least one of these suffixes must be present
 # before we report ``kind=autograph``. Avoids false-positives when a
 # hand-built KG happens to use a generic name like ``Documents``.
-_STRONG_AUTOGRAPH_MARKERS = frozenset(
-    {"CorpusGraph", "kg", "corpus_relations", "rags"}
-)
+_STRONG_AUTOGRAPH_MARKERS = frozenset({"CorpusGraph", "kg", "corpus_relations", "rags"})
 
 # Implicit cross-graph link: GraphRAG seeds the KG's
 # ``Entities.entity_type`` values from the corpus's ``rags.entity_types``.
@@ -139,27 +137,19 @@ def _detect_autograph(snapshot: dict[str, Any]) -> ArangoProductReport:
         prefix, suffix, kind, _role = _match_suffix(name)
         if prefix is None or suffix is None or kind == "graph":
             continue
-        bucket = by_project.setdefault(
-            prefix, {"vertex": {}, "edge": {}, "graphs": {}}
-        )
+        bucket = by_project.setdefault(prefix, {"vertex": {}, "edge": {}, "graphs": {}})
         bucket["edge" if kind == "edge" else "vertex"][suffix] = name
 
     for name in graph_names:
         prefix, suffix, kind, _role = _match_suffix(name)
         if prefix is None or suffix is None or kind != "graph":
             continue
-        bucket = by_project.setdefault(
-            prefix, {"vertex": {}, "edge": {}, "graphs": {}}
-        )
+        bucket = by_project.setdefault(prefix, {"vertex": {}, "edge": {}, "graphs": {}})
         bucket["graphs"][suffix] = name
 
     projects: list[AutographProject] = []
     for prefix, bucket in sorted(by_project.items()):
-        all_suffixes = (
-            set(bucket["vertex"].keys())
-            | set(bucket["edge"].keys())
-            | set(bucket["graphs"].keys())
-        )
+        all_suffixes = set(bucket["vertex"].keys()) | set(bucket["edge"].keys()) | set(bucket["graphs"].keys())
         if not (all_suffixes & _STRONG_AUTOGRAPH_MARKERS):
             continue
         projects.append(_classify_project(prefix, bucket))
@@ -174,9 +164,7 @@ def _detect_autograph(snapshot: dict[str, Any]) -> ArangoProductReport:
     return ArangoProductReport(autograph_projects=projects)
 
 
-def _classify_project(
-    prefix: str, bucket: dict[str, Any]
-) -> AutographProject:
+def _classify_project(prefix: str, bucket: dict[str, Any]) -> AutographProject:
     vertex_suffixes = set(bucket["vertex"].keys())
     edge_suffixes = set(bucket["edge"].keys())
     graph_suffixes = set(bucket["graphs"].keys())
@@ -188,9 +176,7 @@ def _classify_project(
         or "similarities" in edge_suffixes
     )
     has_kg_evidence = bool(
-        (vertex_suffixes & _KG_VERTEX_SUFFIXES)
-        or "kg" in graph_suffixes
-        or "Relations" in edge_suffixes
+        (vertex_suffixes & _KG_VERTEX_SUFFIXES) or "kg" in graph_suffixes or "Relations" in edge_suffixes
     )
 
     if has_corpus_evidence and has_kg_evidence:
@@ -228,13 +214,8 @@ def _classify_project(
                 }
             )
 
-    corpus_score = (
-        len(vertex_suffixes & _CORPUS_VERTEX_SUFFIXES)
-        / len(_CORPUS_VERTEX_SUFFIXES)
-    )
-    kg_score = (
-        len(vertex_suffixes & _KG_VERTEX_SUFFIXES) / len(_KG_VERTEX_SUFFIXES)
-    )
+    corpus_score = len(vertex_suffixes & _CORPUS_VERTEX_SUFFIXES) / len(_CORPUS_VERTEX_SUFFIXES)
+    kg_score = len(vertex_suffixes & _KG_VERTEX_SUFFIXES) / len(_KG_VERTEX_SUFFIXES)
     base = max(corpus_score, kg_score)
     bonus = 0.0
     if "CorpusGraph" in graph_suffixes or "kg" in graph_suffixes:

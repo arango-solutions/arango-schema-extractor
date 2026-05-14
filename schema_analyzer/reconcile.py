@@ -75,9 +75,7 @@ def strip_unknown_collection_names(
                 continue
             col = entry.get("collectionName")
             if isinstance(col, str) and col and col not in allowed:
-                warnings.append(
-                    f"Stripped LLM-hallucinated collectionName {col!r} from entity {ent_name!r}"
-                )
+                warnings.append(f"Stripped LLM-hallucinated collectionName {col!r} from entity {ent_name!r}")
                 entry.pop("collectionName", None)
 
     relationships = pm.get("relationships")
@@ -88,9 +86,7 @@ def strip_unknown_collection_names(
             for field in ("edgeCollectionName", "collectionName"):
                 col = entry.get(field)
                 if isinstance(col, str) and col and col not in allowed:
-                    warnings.append(
-                        f"Stripped LLM-hallucinated {field} {col!r} from relationship {rel_name!r}"
-                    )
+                    warnings.append(f"Stripped LLM-hallucinated {field} {col!r} from relationship {rel_name!r}")
                     entry.pop(field, None)
 
     return warnings

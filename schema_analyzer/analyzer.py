@@ -46,6 +46,7 @@ from .workflow import async_generate_validate_repair, run_generate_validate_repa
 
 logger = logging.getLogger(__name__)
 
+
 def _arango_product_dict_for(snapshot: dict) -> dict | None:
     """Return the arango_product metadata block for a snapshot."""
     report = detect_arango_products(snapshot)
@@ -54,9 +55,7 @@ def _arango_product_dict_for(snapshot: dict) -> dict | None:
 
 def _arango_product_status_for(snapshot: dict) -> str:
     """'ok' when any product detected, 'none' otherwise."""
-    return (
-        "ok" if not detect_arango_products(snapshot).is_empty else "none"
-    )
+    return "ok" if not detect_arango_products(snapshot).is_empty else "none"
 
 
 _PROVENANCE_CACHE_STRIP = (

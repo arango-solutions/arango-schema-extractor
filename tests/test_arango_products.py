@@ -1,5 +1,6 @@
 """Tests for schema_analyzer.arango_products - first-party Arango
 product detection (Autograph today)."""
+
 from __future__ import annotations
 
 from schema_analyzer.arango_products import (
@@ -56,9 +57,17 @@ class TestDetectAutograph:
     def test_complete_project(self):
         snap = _snap(
             collections=[
-                "P_Chunks", "P_Communities", "P_Documents", "P_Entities",
-                "P_domains", "P_modules", "P_sources", "P_rags",
-                "P_corpus_relations", "P_Relations", "P_similarities",
+                "P_Chunks",
+                "P_Communities",
+                "P_Documents",
+                "P_Entities",
+                "P_domains",
+                "P_modules",
+                "P_sources",
+                "P_rags",
+                "P_corpus_relations",
+                "P_Relations",
+                "P_similarities",
             ],
             graphs=["P_CorpusGraph", "P_kg"],
         )
@@ -75,8 +84,12 @@ class TestDetectAutograph:
     def test_corpus_only_failed_run(self):
         snap = _snap(
             collections=[
-                "X_domains", "X_modules", "X_sources", "X_rags",
-                "X_corpus_relations", "X_similarities",
+                "X_domains",
+                "X_modules",
+                "X_sources",
+                "X_rags",
+                "X_corpus_relations",
+                "X_similarities",
             ],
             graphs=["X_CorpusGraph"],
         )
@@ -90,7 +103,10 @@ class TestDetectAutograph:
     def test_kg_only_orphan(self):
         snap = _snap(
             collections=[
-                "Y_Chunks", "Y_Communities", "Y_Documents", "Y_Entities",
+                "Y_Chunks",
+                "Y_Communities",
+                "Y_Documents",
+                "Y_Entities",
                 "Y_Relations",
             ],
             graphs=["Y_kg"],
@@ -113,11 +129,21 @@ class TestDetectAutograph:
     def test_multi_project_split(self):
         snap = _snap(
             collections=[
-                "A_domains", "A_modules", "A_sources", "A_rags",
+                "A_domains",
+                "A_modules",
+                "A_sources",
+                "A_rags",
                 "A_corpus_relations",
-                "B_Chunks", "B_Communities", "B_Documents", "B_Entities",
-                "B_Relations", "B_domains", "B_modules", "B_sources",
-                "B_rags", "B_corpus_relations",
+                "B_Chunks",
+                "B_Communities",
+                "B_Documents",
+                "B_Entities",
+                "B_Relations",
+                "B_domains",
+                "B_modules",
+                "B_sources",
+                "B_rags",
+                "B_corpus_relations",
             ],
             graphs=["A_CorpusGraph", "B_CorpusGraph", "B_kg"],
         )
@@ -132,7 +158,10 @@ class TestDetectAutograph:
         # Corpus-only: no entity_type seed link possible.
         corpus_only = _snap(
             collections=[
-                "P_domains", "P_modules", "P_sources", "P_rags",
+                "P_domains",
+                "P_modules",
+                "P_sources",
+                "P_rags",
                 "P_corpus_relations",
             ],
             graphs=["P_CorpusGraph"],
@@ -143,9 +172,16 @@ class TestDetectAutograph:
         # Complete: link emitted.
         complete = _snap(
             collections=[
-                "P_domains", "P_modules", "P_sources", "P_rags",
-                "P_Chunks", "P_Communities", "P_Documents", "P_Entities",
-                "P_corpus_relations", "P_Relations",
+                "P_domains",
+                "P_modules",
+                "P_sources",
+                "P_rags",
+                "P_Chunks",
+                "P_Communities",
+                "P_Documents",
+                "P_Entities",
+                "P_corpus_relations",
+                "P_Relations",
             ],
             graphs=["P_CorpusGraph", "P_kg"],
         )
@@ -169,10 +205,7 @@ class TestDetectAutograph:
         )
         report = detect_arango_products(snap)
         assert len(report.autograph_projects) == 1
-        assert (
-            report.autograph_projects[0].project_name
-            == "OpenRTB-API-Specification"
-        )
+        assert report.autograph_projects[0].project_name == "OpenRTB-API-Specification"
 
     def test_empty_snapshot(self):
         assert detect_arango_products({}).is_empty
@@ -184,7 +217,10 @@ class TestDetectAutograph:
             "collections": [
                 {"name": n}
                 for n in [
-                    "P_domains", "P_modules", "P_sources", "P_rags",
+                    "P_domains",
+                    "P_modules",
+                    "P_sources",
+                    "P_rags",
                     "P_corpus_relations",
                 ]
             ],
@@ -198,8 +234,13 @@ class TestSerialization:
     def test_to_dict_round_trip(self):
         snap = _snap(
             collections=[
-                "P_Chunks", "P_Communities", "P_Documents", "P_Entities",
-                "P_rags", "P_corpus_relations", "P_Relations",
+                "P_Chunks",
+                "P_Communities",
+                "P_Documents",
+                "P_Entities",
+                "P_rags",
+                "P_corpus_relations",
+                "P_Relations",
             ],
             graphs=["P_CorpusGraph", "P_kg"],
         )
@@ -210,8 +251,14 @@ class TestSerialization:
         assert len(as_dict["projects"]) == 1
         proj = as_dict["projects"][0]
         for key in (
-            "project_name", "completeness", "corpus_graph", "kg_graph",
-            "corpus_collections", "kg_collections", "implicit_links",
-            "warnings", "confidence",
+            "project_name",
+            "completeness",
+            "corpus_graph",
+            "kg_graph",
+            "corpus_collections",
+            "kg_collections",
+            "implicit_links",
+            "warnings",
+            "confidence",
         ):
             assert key in proj
