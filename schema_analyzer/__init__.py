@@ -10,10 +10,18 @@ from .snapshot import (
     fingerprint_physical_schema,
     fingerprint_physical_shape,
 )
+from .arango_products import (
+    ArangoProductReport,
+    AutographProject,
+    detect_arango_products,
+)
 from .tool import run_tool
 
 __all__ = [
     "AgenticSchemaAnalyzer",
+    "ArangoProductReport",
+    "AutographProject",
+    "detect_arango_products",
     "ConceptualSchema",
     "PhysicalMapping",
     "generate_schema_docs",
