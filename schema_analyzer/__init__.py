@@ -1,4 +1,9 @@
 from .analyzer import AgenticSchemaAnalyzer
+from .arango_products import (
+    ArangoProductReport,
+    AutographProject,
+    detect_arango_products,
+)
 from .conceptual import ConceptualSchema
 from .docs import generate_schema_docs
 from .exports import export_mapping
@@ -9,11 +14,6 @@ from .snapshot import (
     fingerprint_physical_counts,
     fingerprint_physical_schema,
     fingerprint_physical_shape,
-)
-from .arango_products import (
-    ArangoProductReport,
-    AutographProject,
-    detect_arango_products,
 )
 from .tool import run_tool
 

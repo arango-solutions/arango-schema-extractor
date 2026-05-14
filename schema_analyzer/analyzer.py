@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
+from .arango_products import detect_arango_products
 from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
@@ -26,7 +27,6 @@ from .defaults import (
     MIN_LLM_BUDGET_MS,
 )
 from .domain_detect import DomainHint, detect_domain
-from .arango_products import detect_arango_products
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .multitenancy import classify_multitenancy

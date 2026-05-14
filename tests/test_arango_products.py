@@ -2,11 +2,7 @@
 product detection (Autograph today)."""
 from __future__ import annotations
 
-import pytest
-
 from schema_analyzer.arango_products import (
-    ArangoProductReport,
-    AutographProject,
     _match_suffix,
     detect_arango_products,
 )
