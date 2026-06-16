@@ -12,7 +12,7 @@ entries with controlled cardinality/coverage profiles, and Change B
 from __future__ import annotations
 
 from schema_analyzer.baseline import infer_baseline_from_snapshot
-from schema_analyzer.snapshot import _pick_best_type_field
+from schema_analyzer.type_detection import _pick_best_type_field
 
 
 def _edge_entry(

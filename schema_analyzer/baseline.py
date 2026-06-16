@@ -5,7 +5,7 @@ from typing import Any
 from .conceptual import ConceptualSchema
 from .defaults import UNRESOLVED_ENDPOINT
 from .mapping import PhysicalMapping
-from .snapshot import (
+from .type_detection import (
     _pick_best_type_field,
     _type_values_for_field,
     infer_entity_type_from_collection_name,
