@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Internal refactor (no behavior change)
+
+- Split the two largest modules for maintainability and isolated testing:
+  `analyzer.py` (894→648 lines) extracted its post-inference enrichment pipeline
+  into `enrichment.py`; `snapshot.py` (928→696 lines) extracted its DB-free
+  type-discriminator heuristics into `type_detection.py`. Public import paths
+  are preserved.
+
 ### CLI convenience commands
 
 - New subcommands that connect to a database and emit a single artifact without
