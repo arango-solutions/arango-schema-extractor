@@ -33,6 +33,7 @@ from .multitenancy import classify_multitenancy
 from .provenance import annotate_provenance
 from .providers import create_provider, get_default_model, get_provider_env_var
 from .quality import build_quality_block
+from .rdf_topology import detect_rdf_topology
 from .reconcile import reconcile_physical_mapping, strip_unknown_collection_names
 from .redaction import RedactionOptions, redact_snapshot_for_egress
 from .shard_families import detect_shard_families
@@ -301,6 +302,24 @@ def _apply_vci(
     meta["vci"] = summary
 
 
+def _apply_rdf_topology(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Detect RDF topology (TRIPLE style) and stamp ``metadata.rdfTopology``.
+
+    Always safe to call; a no-op when the snapshot has no collections.
+    """
+    block = detect_rdf_topology(data, snapshot)
+    if block is None:
+        return
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+    meta["rdfTopology"] = block
+
+
 def _apply_multitenancy(
     data: dict[str, Any],
     snapshot: dict[str, Any],
@@ -536,6 +555,7 @@ class AgenticSchemaAnalyzer:
             _apply_shard_families(stats_holder)
             _apply_multitenancy(stats_holder, snapshot)
             _apply_vci(stats_holder, snapshot)
+            _apply_rdf_topology(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             baseline_conceptual = ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json()
             baseline_physical = PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json()
@@ -571,6 +591,7 @@ class AgenticSchemaAnalyzer:
                 multitenancy=stats_holder["metadata"].get("multitenancy"),
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
                 vci=stats_holder["metadata"].get("vci"),
+                rdf_topology=stats_holder["metadata"].get("rdfTopology"),
                 arango_product=_arango_product_dict_for(snapshot),
                 arango_product_status=_arango_product_status_for(snapshot),
                 quality_metrics=baseline_quality,
@@ -670,6 +691,7 @@ class AgenticSchemaAnalyzer:
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
         _apply_vci(data, prep.snapshot)
+        _apply_rdf_topology(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -745,6 +767,7 @@ class AgenticSchemaAnalyzer:
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
         _apply_vci(data, prep.snapshot)
+        _apply_rdf_topology(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -840,6 +863,9 @@ class AgenticSchemaAnalyzer:
             if isinstance(data.get("metadata"), dict)
             else None,
             vci=data.get("metadata", {}).get("vci") if isinstance(data.get("metadata"), dict) else None,
+            rdf_topology=data.get("metadata", {}).get("rdfTopology")
+            if isinstance(data.get("metadata"), dict)
+            else None,
             quality_metrics=quality_metrics,
             health_score=health_score,
         )

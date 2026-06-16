@@ -4,6 +4,13 @@
 
 ### Roadmap detections
 
+- **RDF-topology (RPT) detection + TRIPLE mapping style** (PRD §6.1/§6.2).
+  Deterministic, snapshot-only. Recognizes RDF triple/quad stores via collection
+  naming (`_triples`, `quads`, …) or a subject/predicate/object field signature,
+  and `rdf:type` assertion edges via sampled predicate values. Emits
+  `metadata.rdfTopology` and annotates affected physical-mapping entries with
+  `tripleCandidate: true` + a `triple` (`{"style": "TRIPLE"}`) block alongside the
+  native style.
 - **Vertex-Centric Index (VCI) detection** (PRD §6.1/§6.2). Deterministic,
   snapshot-only. Relationship mappings whose edge collection carries a
   persistent index rooted at `_from`/`_to` plus discriminator fields, and/or

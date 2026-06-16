@@ -73,6 +73,11 @@ class AnalysisMetadata(BaseModel):
     # detail lives under physicalMapping.relationships[type].vci. Absent when
     # no VCI signals were found.
     vci: dict[str, Any] | None = Field(default=None, alias="vci")
+    # Populated by the RDF-topology detector (rdf_topology.py, PRD §6.1/§6.2).
+    # Classifies whether the schema is stored as RDF triples / rdf:type edges
+    # (the TRIPLE mapping style) with supporting evidence. Absent when the
+    # snapshot has no collections to classify.
+    rdf_topology: dict[str, Any] | None = Field(default=None, alias="rdfTopology")
     # Populated by the Arango product detector (arango_products.py).
     # Carries any first-party Arango product artefacts found in the
     # snapshot (today: Autograph corpus + KG projects). Empty

@@ -174,6 +174,31 @@ STATISTICS_DEGREE_ROUND: int = 2
 # Decimal places used when rounding selectivity (edge_count / (S × T)).
 STATISTICS_SELECTIVITY_ROUND: int = 6
 
+# RDF-topology (RPT) detection (PRD §6.1/§6.2 — TRIPLE mapping style)
+# Collection-name patterns (case-insensitive) that signal an RDF triple/quad
+# store: ``triples``, ``_triples``, ``spo_triples``, ``quads``, ``statements``.
+RDF_TRIPLE_COLLECTION_NAME_PATTERNS: tuple[str, ...] = (
+    r"(?i)^_?triples?$",
+    r"(?i)_triples?$",
+    r"(?i)^s?p?o?_?quads?$",
+    r"(?i)^quads?$",
+    r"(?i)^statements?$",
+    r"(?i)^spo$",
+)
+# Field-name sets that signal a subject/predicate/object document shape. A
+# collection whose observed fields are a superset of any of these is a triple
+# store regardless of its name.
+RDF_TRIPLE_FIELD_SIGNATURES: tuple[frozenset[str], ...] = (
+    frozenset({"subject", "predicate", "object"}),
+    frozenset({"s", "p", "o"}),
+)
+# Field names that carry the predicate of a reified-as-edge triple.
+RDF_PREDICATE_FIELD_NAMES: tuple[str, ...] = ("predicate", "p", "rel", "relation", "relType")
+# Discriminator values that denote an ``rdf:type`` assertion edge.
+RDF_TYPE_PREDICATE_VALUES: frozenset[str] = frozenset(
+    {"rdf:type", "type", "a", "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
+)
+
 # Snapshot format
 # Bumped when the on-disk shape of snapshot_physical_schema() changes
 # in a way that fingerprint-keyed caches must invalidate.

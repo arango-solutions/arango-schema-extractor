@@ -143,7 +143,9 @@
                     }
                   },
                   "tenantScope": { "$ref": "#/$defs/TenantScope" },
-                  "source": { "$ref": "#/$defs/ElementSource" }
+                  "source": { "$ref": "#/$defs/ElementSource" },
+                  "tripleCandidate": { "type": "boolean" },
+                  "triple": { "$ref": "#/$defs/Triple" }
                 }
               }
             },
@@ -192,7 +194,9 @@
                     "type": "boolean",
                     "description": "True when a vertex-centric-index pattern (index-level and/or denormalization) was detected for this relationship (PRD §6.1/§6.2). The underlying style is preserved; this is an additive optimization hint."
                   },
-                  "source": { "$ref": "#/$defs/ElementSource" }
+                  "source": { "$ref": "#/$defs/ElementSource" },
+                  "tripleCandidate": { "type": "boolean" },
+                  "triple": { "$ref": "#/$defs/Triple" }
                 }
               }
             }
@@ -267,6 +271,18 @@
               "properties": {
                 "status": { "type": "string", "enum": ["ok"] },
                 "relationships": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "rdfTopology": {
+              "description": "RDF-topology (RPT) classification (PRD §6.1/§6.2): whether the schema is stored as RDF triples / rdf:type edges (the TRIPLE mapping style). Triple/type collections are also annotated under physicalMapping with tripleCandidate=true.",
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "status": { "type": "string", "enum": ["ok"] },
+                "isRdfTopology": { "type": "boolean" },
+                "tripleCollections": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                "typeEdges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                "evidence": { "type": "array", "items": { "type": "string" } }
               }
             },
             "qualityMetrics": {
@@ -603,6 +619,15 @@
             }
           }
         }
+      }
+    },
+
+    "Triple": {
+      "description": "TRIPLE mapping-style annotation (PRD §6.1/§6.2): this entity/relationship is stored in an RDF triple/quad collection rather than as a native property-graph collection.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "style": { "const": "TRIPLE" }
       }
     },
 
