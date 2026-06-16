@@ -267,25 +267,35 @@
               ]
             },
             "vci": {
-              "description": "Summary of vertex-centric-index detection (PRD §6.1/§6.2): the relationship types for which a VCI pattern was found. Per-relationship detail lives under physicalMapping.relationships[type].vci.",
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {
-                "status": { "type": "string", "enum": ["ok"] },
-                "relationships": { "type": "array", "items": { "type": "string" } }
-              }
+              "description": "Summary of vertex-centric-index detection (PRD §6.1/§6.2): the relationship types for which a VCI pattern was found. Per-relationship detail lives under physicalMapping.relationships[type].vci. Null when no VCI signals were found.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "relationships": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              ]
             },
             "rdfTopology": {
-              "description": "RDF-topology (RPT) classification (PRD §6.1/§6.2): whether the schema is stored as RDF triples / rdf:type edges (the TRIPLE mapping style). Triple/type collections are also annotated under physicalMapping with tripleCandidate=true.",
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {
-                "status": { "type": "string", "enum": ["ok"] },
-                "isRdfTopology": { "type": "boolean" },
-                "tripleCollections": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-                "typeEdges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-                "evidence": { "type": "array", "items": { "type": "string" } }
-              }
+              "description": "RDF-topology (RPT) classification (PRD §6.1/§6.2): whether the schema is stored as RDF triples / rdf:type edges (the TRIPLE mapping style). Triple/type collections are also annotated under physicalMapping with tripleCandidate=true. Null when the snapshot has no collections to classify.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "isRdfTopology": { "type": "boolean" },
+                    "tripleCollections": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                    "typeEdges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                    "evidence": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              ]
             },
             "qualityMetrics": {
               "description": "Deterministic structural + grounding quality signals (PRD 3.12.3). Structural metrics are derived from the conceptual schema (connectivity, orphan ratio, property richness, dangling-relationship consistency); grounding metrics check the physical mapping against the snapshot (every referenced collection exists; every entity is mapped). Ratios are null when their denominator is zero.",

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### CLI convenience commands
+
+- New subcommands that connect to a database and emit a single artifact without
+  hand-authoring v1 request JSON: `arangodb-schema-analyzer snapshot|analyze|docs|owl`
+  with `--url/--database/--user/--password|--password-env-var`, plus
+  `--provider/--model/--api-key-env-var` (analyze/docs/owl) and `--format`
+  (owl). The default stdin/stdout tool mode and `eval` are unchanged.
+- **Contract fix:** `metadata.vci` / `metadata.rdfTopology` are now declared
+  nullable in the v1 response schema (they serialize as `null` when no signal
+  is found); a baseline analyze response previously failed internal validation.
+
 ### New v1 tool-contract operations
 
 - **`diff`** — structural diff of `input.previousAnalysis` vs `input.analysis`

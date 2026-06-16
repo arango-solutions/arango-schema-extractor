@@ -96,6 +96,21 @@ arangodb-schema-analyzer [--request FILE] [--out FILE] [--pretty] [-v|--verbose]
 - `--pretty` — pretty-print JSON output
 - `-v` / `--verbose` — enable verbose logging
 
+### Convenience subcommands
+
+Point at a database and emit a single artifact directly (no hand-written
+request JSON):
+
+```bash
+arangodb-schema-analyzer snapshot --url http://localhost:8529 --database mydb --password ...
+arangodb-schema-analyzer analyze  --database mydb --provider openai --api-key-env-var OPENAI_API_KEY
+arangodb-schema-analyzer docs     --database mydb            # Markdown
+arangodb-schema-analyzer owl      --database mydb --format jsonld
+```
+
+Connection args fall back to `ARANGO_URL`/`ARANGO_DB`/`ARANGO_USER`/`ARANGO_PASS`
+env vars. Prefer `--password-env-var NAME` over inline `--password`.
+
 ## Evaluation CLI
 
 Run analysis quality benchmarks against domain packs:

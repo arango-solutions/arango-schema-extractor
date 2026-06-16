@@ -43,6 +43,91 @@ def _cmd_tool(args: argparse.Namespace) -> int:
     return 0 if resp.get("ok") else TOOL_ERROR_EXIT_CODE
 
 
+def _build_connection(args: argparse.Namespace) -> dict[str, Any]:
+    url = args.url or os.environ.get("ARANGO_URL", os.environ.get("ARANGO_HOST", DEFAULT_ARANGO_URL))
+    database = args.database or os.environ.get("ARANGO_DB", "")
+    if not database:
+        raise SystemExit("A database is required. Pass --database or set ARANGO_DB.")
+    user = args.user or os.environ.get("ARANGO_USER", DEFAULT_ARANGO_USER)
+    conn: dict[str, Any] = {"url": url, "database": database, "username": user}
+    # Prefer an env-var indirection if requested; otherwise inline password.
+    if args.password_env_var:
+        conn["passwordEnvVar"] = args.password_env_var
+    else:
+        conn["password"] = args.password or os.environ.get("ARANGO_PASS", os.environ.get("ARANGO_PASSWORD", ""))
+    return conn
+
+
+def _emit(text: str, out: str | None) -> None:
+    if out:
+        Path(out).write_text(text + "\n", encoding="utf-8")
+    else:
+        sys.stdout.write(text + "\n")
+
+
+def _cmd_connect(args: argparse.Namespace) -> int:
+    """Convenience wrapper: point at a DB and emit snapshot/analysis/docs/owl
+    directly, without hand-authoring v1 request JSON."""
+    conn = _build_connection(args)
+    pretty = getattr(args, "pretty", False)
+
+    def _dump(obj: Any) -> str:
+        return json.dumps(obj, indent=2 if pretty else None, sort_keys=True)
+
+    if args.command == "snapshot":
+        resp = run_tool({"contractVersion": "1", "operation": "snapshot", "connection": conn})
+        if not resp.get("ok"):
+            _emit(_dump(resp), args.out)
+            return TOOL_ERROR_EXIT_CODE
+        _emit(_dump(resp["result"]["snapshot"]), args.out)
+        return 0
+
+    # analyze / docs / owl all need an analysis first.
+    analyze_req: dict[str, Any] = {"contractVersion": "1", "operation": "analyze", "connection": conn}
+    if getattr(args, "provider", None):
+        llm: dict[str, Any] = {"provider": args.provider}
+        if getattr(args, "model", None):
+            llm["model"] = args.model
+        if getattr(args, "api_key_env_var", None):
+            llm["apiKeyEnvVar"] = args.api_key_env_var
+        analyze_req["llm"] = llm
+    analyze_resp = run_tool(analyze_req)
+    if not analyze_resp.get("ok"):
+        _emit(_dump(analyze_resp), args.out)
+        return TOOL_ERROR_EXIT_CODE
+    analysis = analyze_resp["result"]["analysis"]
+
+    if args.command == "analyze":
+        _emit(_dump(analysis), args.out)
+        return 0
+
+    if args.command == "docs":
+        resp = run_tool({"contractVersion": "1", "operation": "docs", "input": {"analysis": analysis}})
+        if not resp.get("ok"):
+            _emit(_dump(resp), args.out)
+            return TOOL_ERROR_EXIT_CODE
+        _emit(resp["result"]["markdown"], args.out)
+        return 0
+
+    if args.command == "owl":
+        fmt = getattr(args, "format", "turtle")
+        resp = run_tool(
+            {
+                "contractVersion": "1",
+                "operation": "owl",
+                "input": {"analysis": analysis},
+                "outputOptions": {"owlFormat": fmt},
+            }
+        )
+        if not resp.get("ok"):
+            _emit(_dump(resp), args.out)
+            return TOOL_ERROR_EXIT_CODE
+        _emit(_dump(resp["result"]["jsonld"]) if fmt == "jsonld" else resp["result"]["turtle"], args.out)
+        return 0
+
+    raise SystemExit(f"Unknown command: {args.command}")
+
+
 def _cmd_eval(args: argparse.Namespace) -> int:
     from arango import ArangoClient
 
@@ -105,6 +190,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output (indent=2).")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
 
+    # Convenience subcommands: connect to a DB and emit a single artifact.
+    def _add_connection_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--url", help="ArangoDB URL (or ARANGO_URL / ARANGO_HOST env).")
+        p.add_argument("--database", help="Database name (or ARANGO_DB env).")
+        p.add_argument("--user", help="Username (default: root).")
+        p.add_argument("--password", help="Password (or ARANGO_PASS / ARANGO_PASSWORD env).")
+        p.add_argument("--password-env-var", help="Name of env var holding the password (preferred over --password).")
+        p.add_argument("--out", help="Write output to this path (default: stdout).")
+        p.add_argument("--pretty", action="store_true", help="Pretty-print JSON output (indent=2).")
+        p.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
+
+    def _add_llm_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--provider", help="LLM provider (openai|anthropic|openrouter). Omit for baseline inference.")
+        p.add_argument("--model", help="LLM model name.")
+        p.add_argument("--api-key-env-var", help="Name of env var holding the LLM API key.")
+
+    snapshot_p = sub.add_parser("snapshot", help="Connect to a DB and print the physical schema snapshot JSON.")
+    _add_connection_args(snapshot_p)
+
+    analyze_p = sub.add_parser("analyze", help="Connect to a DB and print the analysis JSON.")
+    _add_connection_args(analyze_p)
+    _add_llm_args(analyze_p)
+
+    docs_p = sub.add_parser("docs", help="Connect to a DB, analyze, and print Markdown docs.")
+    _add_connection_args(docs_p)
+    _add_llm_args(docs_p)
+
+    owl_p = sub.add_parser("owl", help="Connect to a DB, analyze, and print OWL (turtle|jsonld).")
+    _add_connection_args(owl_p)
+    _add_llm_args(owl_p)
+    owl_p.add_argument("--format", choices=["turtle", "jsonld"], default="turtle", help="OWL serialization.")
+
     # Eval subcommand
     eval_p = sub.add_parser("eval", help="Run evaluation against domain packs.")
     eval_p.add_argument("--url", help="ArangoDB URL (or ARANGO_URL / ARANGO_HOST env).")
@@ -134,6 +251,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "eval":
         return _cmd_eval(args)
+
+    if args.command in ("snapshot", "analyze", "docs", "owl"):
+        return _cmd_connect(args)
 
     return _cmd_tool(args)
 
