@@ -26,6 +26,7 @@ from .docs import generate_schema_docs
 from .errors import SchemaAnalyzerError
 from .exports import export_mapping
 from .owl_export import export_conceptual_model_as_owl_turtle
+from .redaction import RedactionOptions
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_response_v1
 
@@ -47,8 +48,9 @@ def _env(name: str) -> str | None:
 
 
 def _get_password(conn: dict[str, Any]) -> str | None:
-    if "password" in conn and isinstance(conn.get("password"), str):
-        return conn["password"]
+    password = conn.get("password")
+    if isinstance(password, str):
+        return password
     env_var = conn.get("passwordEnvVar")
     if isinstance(env_var, str) and env_var:
         return _env(env_var)
@@ -58,8 +60,9 @@ def _get_password(conn: dict[str, Any]) -> str | None:
 def _get_api_key(llm: dict[str, Any] | None) -> str | None:
     if not llm:
         return None
-    if "apiKey" in llm and isinstance(llm.get("apiKey"), str):
-        return llm["apiKey"]
+    api_key = llm.get("apiKey")
+    if isinstance(api_key, str):
+        return api_key
     env_var = llm.get("apiKeyEnvVar")
     if isinstance(env_var, str) and env_var:
         return _env(env_var)
@@ -226,6 +229,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 sys_prompt = None
             pv = llm.get("promptVersion") if llm else None
             prompt_version = pv if isinstance(pv, str) and pv.strip() else None
+            redaction = RedactionOptions.from_dict(analysis_options.get("redaction"))
             analyzer = AgenticSchemaAnalyzer(
                 llm_provider=(llm.get("provider") if llm else None),
                 api_key=_get_api_key(llm),
@@ -236,6 +240,7 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 system_prompt=sys_prompt,
                 prompt_version=prompt_version,
                 max_repair_attempts=max_repair,
+                redaction=redaction if redaction.active else None,
             )
 
             include_samples = bool(analysis_options.get("includeSamplesInSnapshot") or False)
@@ -278,7 +283,8 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             )
 
         # Transform operations
-        input_obj = request.get("input") if isinstance(request.get("input"), dict) else {}
+        raw_input = request.get("input")
+        input_obj = raw_input if isinstance(raw_input, dict) else {}
         analysis_in = input_obj.get("analysis")
         if not isinstance(analysis_in, dict):
             raise SchemaAnalyzerError("input.analysis is required", code="INVALID_ARGUMENT")

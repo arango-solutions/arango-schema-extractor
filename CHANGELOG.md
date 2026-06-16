@@ -2,7 +2,51 @@
 
 ## Unreleased
 
-(no changes)
+### Transpiler, lineage & egress features (Milestone B)
+
+- **SPARQL export target.** `export_mapping(analysis, target="sparql")` (and the
+  v1 `export` operation with `outputOptions.exportTarget="sparql"`) emits an RDF
+  vocabulary view — classes, object properties with IRIs/domains/ranges —
+  annotated with the physical mapping so a SPARQL→AQL transpiler can resolve
+  triple patterns to collections and edge traversals. The response contract
+  gains a `SparqlExport` shape.
+- **Cypher resolution adapter.** New `build_cypher_resolution_index(analysis)`
+  precomputes, per entity label and relationship type, the injection-safe AQL
+  match/traversal fragment a Cypher transpiler would otherwise re-derive;
+  incomplete mappings are reported with an `error` block instead of crashing.
+- **Analysis diff.** New `diff_analyses(previous, current)` (PRD §3.13.3)
+  returns added/removed/changed entities and relationships, mapping-style flips,
+  and the health-score delta — for stale detection and re-analysis workflows.
+- **Element-level provenance.** Every conceptual entity/relationship and
+  physical-mapping entry is tagged with `source` (`llm` / `baseline` / `human`,
+  PRD §3.13.2); reconciliation-backfilled collections are correctly attributed
+  to `baseline` even on an LLM run, and pre-existing `human` tags are preserved.
+- **LLM redaction modes.** New `analysisOptions.redaction` (`stripSamples`,
+  `maskFieldValues`, PRD §4.3) scrubs sampled documents and concrete field
+  values from the snapshot before LLM egress while preserving structure; the
+  local snapshot used for baseline/reconciliation/statistics is unaffected.
+
+### Quality & developer experience (Milestone A)
+
+- **Quality metrics + health score.** Every analysis now stamps
+  `metadata.qualityMetrics` (deterministic structural signals — connectivity,
+  orphan ratio, property richness, dangling-relationship consistency — plus
+  grounding signals that check the physical mapping against the snapshot) and
+  a normalized 0–100 `metadata.healthScore` composite (PRD §3.12.3). See
+  `schema_analyzer/quality.py`. The v1 response contract documents both fields
+  (`metadata` already allowed additional properties, so this is backward
+  compatible).
+- **mypy is now a blocking CI gate.** The `pydantic.mypy` plugin is enabled and
+  the previously-tolerated type backlog (python-arango `Result[...]` unions,
+  alias mismatches, `Any` leaks) was cleared. A small typed adapter,
+  `schema_analyzer/_arango.py`, centralizes the synchronous-path casts.
+- **Coverage floor raised 65% → 80%**, with new tests for the LLM retry/repair
+  loop, the async analysis path, and the stdlib OpenRouter provider.
+- **Contract-parity test.** `tests/test_tool_contract_schema_parity.py` asserts
+  the documented (`docs/tool-contract/v1`) and bundled
+  (`schema_analyzer/tool_contract/v1`) JSON schemas stay byte-identical.
+- **Async path verified.** All shipped providers implement `agenerate`; the
+  async `analyze_physical_schema_async` entrypoint now has end-to-end coverage.
 
 ## 0.6.1
 

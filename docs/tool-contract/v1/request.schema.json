@@ -95,7 +95,25 @@
         "cacheTtlSeconds": { "type": "integer", "minimum": 0, "maximum": 31536000, "default": 86400 },
 
         "reviewThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.6 },
-        "maxRepairAttempts": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2 }
+        "maxRepairAttempts": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2 },
+
+        "redaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Controls what is scrubbed from the physical snapshot before it is sent to the configured LLM provider (data egress). Has no effect on the no-LLM baseline path or on the local snapshot used for fingerprinting, baseline inference, reconciliation, and statistics.",
+          "properties": {
+            "stripSamples": {
+              "type": "boolean",
+              "default": false,
+              "description": "Remove sampled documents/edges (sample_documents, sample_edges) from each collection before egress."
+            },
+            "maskFieldValues": {
+              "type": "boolean",
+              "default": false,
+              "description": "Replace concrete values in sample_field_value_counts with opaque tokens, preserving field names, distinct-value counts, and frequencies."
+            }
+          }
+        }
       }
     },
 
@@ -114,7 +132,7 @@
           "default": true,
           "description": "When false, tooling.snapshotFingerprint is omitted from the response. Default true preserves existing behavior."
         },
-        "exportTarget": { "type": "string", "enum": ["cypher"], "default": "cypher" }
+        "exportTarget": { "type": "string", "enum": ["cypher", "sparql"], "default": "cypher" }
       }
     },
 

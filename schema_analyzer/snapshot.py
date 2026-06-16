@@ -9,6 +9,14 @@ if TYPE_CHECKING:
 
 import re
 
+from ._arango import (
+    aql_execute,
+    collection_count,
+    collection_indexes,
+    collection_properties,
+    database_graphs,
+    graph_properties,
+)
 from .defaults import (
     MAX_BROADENED_TYPE_CANDIDATES,
     MAX_TYPE_FIELD_DISTINCT_VALUES,
@@ -159,7 +167,7 @@ def _pick_best_type_field(entry: dict[str, Any], *, is_edge: bool = False) -> st
         items = value_counts.get(f)
         if not _passes_distribution_shape(items, total_docs):
             continue
-        n = len({str(it["value"]) for it in items if isinstance(it, dict) and "value" in it})
+        n = len({str(it["value"]) for it in (items or []) if isinstance(it, dict) and "value" in it})
         if n > best_n:
             best = f
             best_n = n
@@ -268,7 +276,8 @@ def _detect_type_fields_via_collect(
     Unlike LIMIT-based sampling, this scans all documents and finds every distinct value.
     """
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR d IN @@c LIMIT 1 RETURN d",
             bind_vars={"@c": collection_name},
         )
@@ -287,7 +296,8 @@ def _detect_type_fields_via_collect(
     value_counts: dict[str, list[dict[str, Any]]] = {}
     for key in candidates:
         try:
-            cursor = db.aql.execute(
+            cursor = aql_execute(
+                db,
                 "FOR d IN @@c "
                 "COLLECT val = d[@field] WITH COUNT INTO cnt "
                 "FILTER val != null "
@@ -325,7 +335,8 @@ def _detect_observed_fields(
         result: dict[str, list[str]] = {}
         for tv in type_values:
             try:
-                cursor = db.aql.execute(
+                cursor = aql_execute(
+                    db,
                     "FOR d IN @@c FILTER d[@field] == @val LIMIT @lim RETURN ATTRIBUTES(d)",
                     bind_vars={
                         "@c": collection_name,
@@ -344,7 +355,8 @@ def _detect_observed_fields(
         return {"by_type": result}
     else:
         try:
-            cursor = db.aql.execute(
+            cursor = aql_execute(
+                db,
                 "FOR d IN @@c LIMIT @lim RETURN ATTRIBUTES(d)",
                 bind_vars={"@c": collection_name, "lim": _PROPERTY_SAMPLE_LIMIT},
             )
@@ -375,7 +387,8 @@ def _detect_edge_endpoints(
     3. No relation type field: just report from/to collections.
     """
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR e IN @@c "
             "COLLECT fromCol = PARSE_IDENTIFIER(e._from).collection, "
             "toCol = PARSE_IDENTIFIER(e._to).collection "
@@ -415,7 +428,8 @@ def _detect_edge_endpoints(
 
         if node_type_field:
             try:
-                cursor = db.aql.execute(
+                cursor = aql_execute(
+                    db,
                     "FOR e IN @@ec "
                     "LET fromDoc = DOCUMENT(e._from) "
                     "LET toDoc = DOCUMENT(e._to) "
@@ -458,7 +472,8 @@ def _detect_edge_endpoints(
     # Strategy 2: Hybrid/PG — resolve per-relation endpoints by collection
     # name (no DOCUMENT() needed, just PARSE_IDENTIFIER).
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR e IN @@ec "
             "COLLECT relType = e[@relField], "
             "fromCol = PARSE_IDENTIFIER(e._from).collection, "
@@ -625,7 +640,7 @@ def fingerprint_physical_shape(
         name = str(c.get("name", ""))
         col_type = "edge" if c.get("type") in (3, "edge") else "doc"
         try:
-            idxs = list(db.collection(name).indexes() or [])
+            idxs = collection_indexes(db.collection(name))
         except Exception:
             idxs = []
         digests = sorted(d for d in (_stable_index_digest(i) for i in idxs) if d)
@@ -655,7 +670,7 @@ def fingerprint_physical_counts(
     for c in _iter_user_collections(db, exclude_collections=exclude_collections):
         name = str(c.get("name", ""))
         try:
-            count = db.collection(name).count()
+            count = collection_count(db.collection(name))
         except Exception:
             count = -1
         parts.append(f"{name}:{count}")
@@ -795,17 +810,17 @@ def snapshot_physical_schema(
             continue
 
         try:
-            props = col.properties()
+            props = collection_properties(col)
         except Exception as e:
             props = {"error": str(e)}
 
         try:
-            count = col.count()
+            count = collection_count(col)
         except Exception:
             count = None
 
         try:
-            indexes = _sort_indexes(list(col.indexes() or []))
+            indexes = _sort_indexes(collection_indexes(col))
         except Exception:
             indexes = []
 
@@ -871,7 +886,8 @@ def snapshot_physical_schema(
             cname = entry["name"]
             is_edge = entry["type"] == "edge"
             try:
-                cursor = db.aql.execute(
+                cursor = aql_execute(
+                    db,
                     "FOR d IN @@c LIMIT @limit RETURN d",
                     bind_vars={"@c": cname, "limit": int(sample_limit_per_collection)},
                 )
@@ -888,7 +904,7 @@ def snapshot_physical_schema(
 
     # ── Named graphs (best-effort) ──────────────────────────────────────
     try:
-        graphs = db.graphs()
+        graphs = database_graphs(db)
         snapshot["graphs"] = graphs
         detailed = []
         if isinstance(graphs, list):
@@ -901,7 +917,7 @@ def snapshot_physical_schema(
                 if not name:
                     continue
                 try:
-                    gp = db.graph(name).properties()
+                    gp = graph_properties(db, name)
                     detailed.append(_summarize_graph_props(gp))
                 except Exception as e:
                     detailed.append({"name": name, "error": str(e)})

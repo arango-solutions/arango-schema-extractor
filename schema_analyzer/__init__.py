@@ -5,8 +5,9 @@ from .arango_products import (
     detect_arango_products,
 )
 from .conceptual import ConceptualSchema
+from .diff import diff_analyses
 from .docs import generate_schema_docs
-from .exports import export_mapping
+from .exports import build_cypher_resolution_index, export_mapping
 from .mapping import PhysicalMapping
 from .owl_export import export_conceptual_model_as_owl_turtle
 from .providers import list_providers, register_provider
@@ -24,8 +25,10 @@ __all__ = [
     "detect_arango_products",
     "ConceptualSchema",
     "PhysicalMapping",
+    "diff_analyses",
     "generate_schema_docs",
     "export_mapping",
+    "build_cypher_resolution_index",
     "export_conceptual_model_as_owl_turtle",
     "register_provider",
     "list_providers",

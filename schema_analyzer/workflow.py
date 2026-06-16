@@ -42,7 +42,7 @@ def _retry_decision(
     """
     if not _is_transient(exc) or attempt >= max_retries:
         return 0.0
-    delay = base_delay * (2**attempt)
+    delay = base_delay * float(2**attempt)
     logger.warning(
         "Transient provider error (attempt %d/%d), retrying in %.1fs: %s",
         attempt + 1,
@@ -121,6 +121,7 @@ def _call_with_retry(
                 raise
             last_exc = e
             time.sleep(delay)
+    assert last_exc is not None  # pragma: no cover
     raise last_exc  # pragma: no cover
 
 
@@ -184,6 +185,7 @@ async def _async_call_with_retry(
                 raise
             last_exc = e
             await asyncio.sleep(delay)
+    assert last_exc is not None  # pragma: no cover
     raise last_exc  # pragma: no cover
 
 

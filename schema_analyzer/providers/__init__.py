@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ..defaults import (
     DEFAULT_ANTHROPIC_MODEL,
@@ -61,7 +61,7 @@ def get_default_model(name: str) -> str:
     entry = _REGISTRY.get(name.lower())
     if not entry:
         raise SchemaAnalyzerError(f"Unknown llm_provider: {name}", code="INVALID_ARGUMENT")
-    return entry["default_model"]
+    return cast(str, entry["default_model"])
 
 
 def create_provider(name: str, *, api_key: str) -> LLMProvider:
@@ -74,7 +74,7 @@ def create_provider(name: str, *, api_key: str) -> LLMProvider:
 
     mod = importlib.import_module(entry["module"])
     cls = getattr(mod, entry["class"])
-    return cls(api_key=api_key)
+    return cast("LLMProvider", cls(api_key=api_key))
 
 
 __all__ = [

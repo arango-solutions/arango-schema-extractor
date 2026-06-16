@@ -30,8 +30,11 @@ from .domain_detect import DomainHint, detect_domain
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
 from .multitenancy import classify_multitenancy
+from .provenance import annotate_provenance
 from .providers import create_provider, get_default_model, get_provider_env_var
+from .quality import build_quality_block
 from .reconcile import reconcile_physical_mapping, strip_unknown_collection_names
+from .redaction import RedactionOptions, redact_snapshot_for_egress
 from .shard_families import detect_shard_families
 from .sharding_profile import classify_sharding_profile
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
@@ -414,6 +417,7 @@ class AgenticSchemaAnalyzer:
     system_prompt: str | None = None
     prompt_version: str | None = None
     max_repair_attempts: int | None = None
+    redaction: RedactionOptions | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.cache, dict) or self.cache is None:
@@ -511,6 +515,19 @@ class AgenticSchemaAnalyzer:
             _apply_shard_families(stats_holder)
             _apply_multitenancy(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
+            baseline_conceptual = ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json()
+            baseline_physical = PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json()
+            annotate_provenance(
+                {
+                    "conceptualSchema": baseline_conceptual,
+                    "physicalMapping": baseline_physical,
+                    "metadata": {},
+                },
+                used_baseline=True,
+            )
+            baseline_quality, baseline_health = build_quality_block(
+                baseline_conceptual, baseline_physical, snapshot, BASELINE_NO_LLM_CONFIDENCE
+            )
             meta = AnalysisMetadata(
                 confidence=BASELINE_NO_LLM_CONFIDENCE,
                 timestamp=now_iso(),
@@ -533,14 +550,16 @@ class AgenticSchemaAnalyzer:
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
                 arango_product=_arango_product_dict_for(snapshot),
                 arango_product_status=_arango_product_status_for(snapshot),
+                quality_metrics=baseline_quality,
+                health_score=baseline_health,
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
-                conceptual_schema=ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json(),
-                physical_mapping=PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json(),
+                conceptual_schema=baseline_conceptual,
+                physical_mapping=baseline_physical,
                 metadata=meta,
             )
-            if use_cache and self.cache is not None:
+            if use_cache and isinstance(self.cache, AnalysisCache):
                 self.cache.set(
                     cache_storage_key,
                     _strip_provenance_for_cache(result.model_dump()),
@@ -549,13 +568,14 @@ class AgenticSchemaAnalyzer:
             return result
 
         logger.info("Using LLM provider=%s", self.llm_provider)
+        assert self.llm_provider is not None and api_key is not None  # guaranteed by use_llm
         provider = create_provider(self.llm_provider, api_key=api_key)
         model = self.model or get_default_model(self.llm_provider)
 
         elapsed_ms = int((time.time() - started) * 1000)
         remaining = max(MIN_LLM_BUDGET_MS, timeout_ms - elapsed_ms)
 
-        prompt = _build_prompt(snapshot, domain_hint=domain_hint)
+        prompt = _build_prompt(redact_snapshot_for_egress(snapshot, self.redaction), domain_hint=domain_hint)
 
         return _AnalysisContext(
             snapshot=snapshot,
@@ -747,6 +767,15 @@ class AgenticSchemaAnalyzer:
         confidence = max(0.0, min(1.0, confidence))
         review_required = confidence < self.review_threshold or bool(errors)
 
+        annotate_provenance(data, used_baseline=bool(errors))
+        conceptual_schema = ConceptualSchema.from_json(
+            data.get("conceptualSchema", {}) if isinstance(data.get("conceptualSchema"), dict) else {}
+        ).to_json()
+        physical_mapping = PhysicalMapping.from_json(
+            data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}
+        ).to_json()
+        quality_metrics, health_score = build_quality_block(conceptual_schema, physical_mapping, snapshot, confidence)
+
         metadata = AnalysisMetadata(
             confidence=confidence,
             timestamp=str(data.get("metadata", {}).get("timestamp") or now_iso()),
@@ -779,15 +808,10 @@ class AgenticSchemaAnalyzer:
             sharding_profile_status=data.get("metadata", {}).get("shardingProfileStatus")
             if isinstance(data.get("metadata"), dict)
             else None,
+            quality_metrics=quality_metrics,
+            health_score=health_score,
         )
         metadata = self._stamp_metadata(metadata, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
-
-        conceptual_schema = ConceptualSchema.from_json(
-            data.get("conceptualSchema", {}) if isinstance(data.get("conceptualSchema"), dict) else {}
-        ).to_json()
-        physical_mapping = PhysicalMapping.from_json(
-            data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}
-        ).to_json()
 
         result = AnalysisResult(
             conceptual_schema=conceptual_schema,
@@ -795,7 +819,7 @@ class AgenticSchemaAnalyzer:
             metadata=metadata,
         )
 
-        if use_cache and self.cache is not None:
+        if use_cache and isinstance(self.cache, AnalysisCache):
             logger.debug("Caching result for cache key prefix %s", cache_storage_key[:16])
             self.cache.set(
                 cache_storage_key,

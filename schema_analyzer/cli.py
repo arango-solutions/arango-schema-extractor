@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .defaults import (
     DEFAULT_ARANGO_URL,
@@ -24,11 +24,11 @@ from .tool import run_tool
 def _read_json(path: str | None) -> dict[str, Any]:
     if path:
         p = Path(path)
-        return json.loads(p.read_text(encoding="utf-8"))
+        return cast("dict[str, Any]", json.loads(p.read_text(encoding="utf-8")))
     raw = sys.stdin.read()
     if not raw.strip():
         raise SystemExit("No input provided. Pass --request <file> or pipe JSON to stdin.")
-    return json.loads(raw)
+    return cast("dict[str, Any]", json.loads(raw))
 
 
 def _cmd_tool(args: argparse.Namespace) -> int:

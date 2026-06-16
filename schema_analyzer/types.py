@@ -76,6 +76,15 @@ class AnalysisMetadata(BaseModel):
     # ``arango_product`` block when one or more projects were found.
     arango_product: dict[str, Any] | None = Field(default=None, alias="arangoProduct")
     arango_product_status: str | None = Field(default=None, alias="arangoProductStatus")
+    # Populated by the quality-metrics pass (PRD §3.12.3). ``quality_metrics``
+    # carries deterministic structural (connectivity, orphan ratio, property
+    # richness, consistency flags) and grounding (mapping-vs-snapshot
+    # faithfulness) signals. ``health_score`` is a normalized 0–100 composite
+    # that folds those signals together with ``confidence`` so consumers can
+    # gate on a single scalar while still being able to drill into the
+    # contributing components.
+    quality_metrics: dict[str, Any] | None = Field(default=None, alias="qualityMetrics")
+    health_score: int | None = Field(default=None, alias="healthScore")
 
 
 class AnalysisResult(BaseModel):

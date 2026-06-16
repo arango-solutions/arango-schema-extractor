@@ -71,7 +71,8 @@
                 "properties": {
                   "name": { "type": "string", "minLength": 1 },
                   "labels": { "type": "array", "items": { "type": "string" } },
-                  "properties": { "type": "array", "items": { "type": "object" } }
+                  "properties": { "type": "array", "items": { "type": "object" } },
+                  "source": { "$ref": "#/$defs/ElementSource" }
                 }
               }
             },
@@ -84,7 +85,8 @@
                   "type": { "type": "string", "minLength": 1 },
                   "fromEntity": { "type": "string", "minLength": 1 },
                   "toEntity": { "type": "string", "minLength": 1 },
-                  "properties": { "type": "array", "items": { "type": "object" } }
+                  "properties": { "type": "array", "items": { "type": "object" } },
+                  "source": { "$ref": "#/$defs/ElementSource" }
                 }
               }
             },
@@ -140,7 +142,8 @@
                       }
                     }
                   },
-                  "tenantScope": { "$ref": "#/$defs/TenantScope" }
+                  "tenantScope": { "$ref": "#/$defs/TenantScope" },
+                  "source": { "$ref": "#/$defs/ElementSource" }
                 }
               }
             },
@@ -250,6 +253,22 @@
                 { "type": "null" },
                 { "type": "string", "enum": ["ok", "degraded"] }
               ]
+            },
+            "qualityMetrics": {
+              "description": "Deterministic structural + grounding quality signals (PRD 3.12.3). Structural metrics are derived from the conceptual schema (connectivity, orphan ratio, property richness, dangling-relationship consistency); grounding metrics check the physical mapping against the snapshot (every referenced collection exists; every entity is mapped). Ratios are null when their denominator is zero.",
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "structural": { "type": "object", "additionalProperties": true },
+                "grounding": { "type": "object", "additionalProperties": true },
+                "healthScoreComponents": { "type": "object", "additionalProperties": { "type": "number" } }
+              }
+            },
+            "healthScore": {
+              "description": "Normalized 0-100 composite that folds confidence with the structural connectivity/consistency and mapping-grounding signals. Components that are not applicable for a given schema (e.g. connectivity for a relationship-free schema) are dropped and the remaining weights renormalized.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
             }
           }
         }
@@ -517,7 +536,59 @@
       "additionalProperties": false,
       "required": ["export"],
       "properties": {
-        "export": { "$ref": "#/$defs/AnalysisOutput" }
+        "export": {
+          "oneOf": [
+            { "$ref": "#/$defs/AnalysisOutput" },
+            { "$ref": "#/$defs/SparqlExport" }
+          ]
+        }
+      }
+    },
+
+    "ElementSource": {
+      "description": "Provenance tag (PRD 3.13.2) marking which producer emitted this element: 'llm' (generate/validate/repair loop), 'baseline' (deterministic inference, including reconciliation backfill on an LLM run), or 'human' (curated and preserved across re-analysis).",
+      "type": "string",
+      "enum": ["llm", "baseline", "human"]
+    },
+
+    "SparqlExport": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["target", "prefixes", "classes", "objectProperties"],
+      "properties": {
+        "target": { "const": "sparql" },
+        "prefixes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["iri", "localName", "label"],
+            "properties": {
+              "iri": { "type": "string" },
+              "localName": { "type": "string" },
+              "label": { "type": "string" },
+              "physical": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "objectProperties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["iri", "localName", "label"],
+            "properties": {
+              "iri": { "type": "string" },
+              "localName": { "type": "string" },
+              "label": { "type": "string" },
+              "domain": { "type": "string" },
+              "range": { "type": "string" },
+              "physical": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "physicalMapping": { "type": "object", "additionalProperties": true }
       }
     },
 

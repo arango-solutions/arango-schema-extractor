@@ -42,6 +42,9 @@ class FilesystemCache(AnalysisCache):
         except Exception:
             logger.warning("Corrupt or unreadable cache entry at %s, treating as miss", p)
             return None
+        if not isinstance(raw, dict):
+            logger.warning("Cache entry at %s is not a JSON object, treating as miss", p)
+            return None
         cache_meta = raw.get("_cache", {})
         generated_at = cache_meta.get("generated_at")
         ttl = cache_meta.get("ttl_seconds")

@@ -123,7 +123,12 @@ Exports (see `schema_analyzer/__init__.py`):
 - `ConceptualSchema` — conceptual schema dataclass
 - `PhysicalMapping` — physical mapping dataclass with AQL helpers
 - `generate_schema_docs(analysis)` — Markdown documentation generator
-- `export_mapping(analysis, target)` — transpiler export (currently only `cypher`)
+- `export_mapping(analysis, target)` — transpiler export (`cypher` or `sparql`)
+- `build_cypher_resolution_index(analysis)` — flattened label/rel-type → AQL
+  lookup for a Cypher transpiler (built on the `PhysicalMapping` AQL helpers)
+- `diff_analyses(previous, current)` — structural diff between two analyses
+  (added/removed/changed entities & relationships, mapping-style flips,
+  health-score delta)
 - `export_conceptual_model_as_owl_turtle(analysis)` — OWL Turtle export
 - `register_provider(name, ...)` — register custom LLM providers
 - `list_providers()` — list registered LLM provider names
@@ -138,6 +143,12 @@ Exports (see `schema_analyzer/__init__.py`):
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
 
+- **Unreleased** — `metadata.qualityMetrics` + `metadata.healthScore`
+  (structural/grounding signals + 0–100 composite), element-level `source`
+  provenance (`llm`/`baseline`/`human`), `diff_analyses()`, a **SPARQL** export
+  target, a Cypher resolution adapter, and `analysisOptions.redaction`
+  (`stripSamples` / `maskFieldValues`) for LLM-egress scrubbing. mypy is now a
+  blocking CI gate and the coverage floor is 80%.
 - **0.6.0 — Shard-family detection** (`physicalMapping.shardFamilies`)
   groups conceptual entities that share an identical property set and a
   common name suffix (the per-source / per-repo collection-duplication

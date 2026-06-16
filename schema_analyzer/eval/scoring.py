@@ -99,7 +99,7 @@ def _extract_relationship_signatures(
             t = r.get("type")
             frm = next((r.get(k) for k in from_keys if r.get(k)), None)
             to = next((r.get(k) for k in to_keys if r.get(k)), None)
-            if all(isinstance(x, str) and x for x in (t, frm, to)):
+            if isinstance(t, str) and t and isinstance(frm, str) and frm and isinstance(to, str) and to:
                 out.add(_norm_rel_sig(t, frm, to))
     return out
 
