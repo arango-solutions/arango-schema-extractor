@@ -25,7 +25,7 @@ from .defaults import (
 from .docs import generate_schema_docs
 from .errors import SchemaAnalyzerError
 from .exports import export_mapping
-from .owl_export import export_conceptual_model_as_owl_turtle
+from .owl_export import export_conceptual_model_as_jsonld, export_conceptual_model_as_owl_turtle
 from .redaction import RedactionOptions
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
 from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_response_v1
@@ -310,11 +310,15 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
             )
 
         if op == "owl":
-            ttl = export_conceptual_model_as_owl_turtle(analysis_in)
+            owl_format = output_options.get("owlFormat")
+            if owl_format == "jsonld":
+                result_block: dict[str, Any] = {"jsonld": export_conceptual_model_as_jsonld(analysis_in)}
+            else:
+                result_block = {"turtle": export_conceptual_model_as_owl_turtle(analysis_in)}
             return _build_response(
                 op=op,
                 req_id=req_id,
-                result={"turtle": ttl},
+                result=result_block,
                 tooling=_tooling_block(analysis=analysis_in, snapshot=None),
             )
 

@@ -690,9 +690,17 @@
     "OwlResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["turtle"],
+      "oneOf": [
+        { "required": ["turtle"] },
+        { "required": ["jsonld"] }
+      ],
       "properties": {
-        "turtle": { "type": "string" }
+        "turtle": { "type": "string" },
+        "jsonld": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "JSON-LD serialization of the conceptual OWL model (classes, subClassOf hierarchy, object properties with domain/range, observed cardinality + functional/inverse-functional characteristics, owl:inverseOf, and phys: annotations)."
+        }
       }
     }
   },

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Richer OWL export (PRD §6.3)
+
+- Turtle export now emits **`rdfs:subClassOf`** hierarchy from shard families,
+  **`owl:FunctionalProperty` / `owl:InverseFunctionalProperty`** +
+  `phys:observedCardinality` derived from the statistics cardinality pattern, and
+  **`owl:inverseOf`** from an explicit relationship `inverseOf` field.
+- New **JSON-LD export**: `export_conceptual_model_as_jsonld(analysis)` and the
+  `owl` operation's `outputOptions.owlFormat: "jsonld"` (returns `result.jsonld`).
+
 ### Roadmap detections
 
 - **RDF-topology (RPT) detection + TRIPLE mapping style** (PRD §6.1/§6.2).

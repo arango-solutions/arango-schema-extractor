@@ -130,6 +130,9 @@ Exports (see `schema_analyzer/__init__.py`):
   (added/removed/changed entities & relationships, mapping-style flips,
   health-score delta)
 - `export_conceptual_model_as_owl_turtle(analysis)` — OWL Turtle export
+  (with `rdfs:subClassOf`, functional/inverse-functional characteristics,
+  observed cardinality, and `owl:inverseOf`)
+- `export_conceptual_model_as_jsonld(analysis)` — OWL conceptual model as JSON-LD
 - `register_provider(name, ...)` — register custom LLM providers
 - `list_providers()` — list registered LLM provider names
 - `run_tool(request_dict)` — programmatic entrypoint to the v1 tool contract

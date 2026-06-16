@@ -9,7 +9,7 @@ from .diff import diff_analyses
 from .docs import generate_schema_docs
 from .exports import build_cypher_resolution_index, export_mapping
 from .mapping import PhysicalMapping
-from .owl_export import export_conceptual_model_as_owl_turtle
+from .owl_export import export_conceptual_model_as_jsonld, export_conceptual_model_as_owl_turtle
 from .providers import list_providers, register_provider
 from .snapshot import (
     fingerprint_physical_counts,
@@ -30,6 +30,7 @@ __all__ = [
     "export_mapping",
     "build_cypher_resolution_index",
     "export_conceptual_model_as_owl_turtle",
+    "export_conceptual_model_as_jsonld",
     "register_provider",
     "list_providers",
     "run_tool",
