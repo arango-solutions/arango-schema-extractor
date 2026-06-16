@@ -186,7 +186,13 @@
                         "unique": { "type": "boolean" }
                       }
                     }
-                  }
+                  },
+                  "vci": { "$ref": "#/$defs/Vci" },
+                  "vciCandidate": {
+                    "type": "boolean",
+                    "description": "True when a vertex-centric-index pattern (index-level and/or denormalization) was detected for this relationship (PRD §6.1/§6.2). The underlying style is preserved; this is an additive optimization hint."
+                  },
+                  "source": { "$ref": "#/$defs/ElementSource" }
                 }
               }
             }
@@ -253,6 +259,15 @@
                 { "type": "null" },
                 { "type": "string", "enum": ["ok", "degraded"] }
               ]
+            },
+            "vci": {
+              "description": "Summary of vertex-centric-index detection (PRD §6.1/§6.2): the relationship types for which a VCI pattern was found. Per-relationship detail lives under physicalMapping.relationships[type].vci.",
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "status": { "type": "string", "enum": ["ok"] },
+                "relationships": { "type": "array", "items": { "type": "string" } }
+              }
             },
             "qualityMetrics": {
               "description": "Deterministic structural + grounding quality signals (PRD 3.12.3). Structural metrics are derived from the conceptual schema (connectivity, orphan ratio, property richness, dangling-relationship consistency); grounding metrics check the physical mapping against the snapshot (every referenced collection exists; every entity is mapped). Ratios are null when their denominator is zero.",
@@ -541,6 +556,52 @@
             { "$ref": "#/$defs/AnalysisOutput" },
             { "$ref": "#/$defs/SparqlExport" }
           ]
+        }
+      }
+    },
+
+    "Vci": {
+      "description": "Vertex-centric-index signals for a relationship (PRD §6.1/§6.2).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "indexLevel": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "accessPattern": { "type": "string", "enum": ["out-edge", "in-edge", "both"] },
+            "indexes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "root": { "type": "string", "enum": ["_from", "_to"] },
+                  "fields": { "type": "array", "items": { "type": "string" } },
+                  "discriminatorFields": { "type": "array", "items": { "type": "string" } },
+                  "unique": { "type": "boolean" },
+                  "sparse": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "denormalization": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "duplicatedFields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "field": { "type": "string" },
+                  "sourceCollections": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
         }
       }
     },

@@ -68,6 +68,11 @@ class AnalysisMetadata(BaseModel):
     # top-level key. Both absent when the snapshot has no user collections.
     multitenancy: dict[str, Any] | None = Field(default=None, alias="multitenancy")
     multitenancy_status: str | None = Field(default=None, alias="multitenancyStatus")
+    # Populated by the vertex-centric-index detector (vci.py, PRD §6.1/§6.2).
+    # Summary of which relationships carry a VCI pattern; per-relationship
+    # detail lives under physicalMapping.relationships[type].vci. Absent when
+    # no VCI signals were found.
+    vci: dict[str, Any] | None = Field(default=None, alias="vci")
     # Populated by the Arango product detector (arango_products.py).
     # Carries any first-party Arango product artefacts found in the
     # snapshot (today: Autograph corpus + KG projects). Empty

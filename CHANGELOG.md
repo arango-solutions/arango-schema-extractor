@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Roadmap detections
+
+- **Vertex-Centric Index (VCI) detection** (PRD §6.1/§6.2). Deterministic,
+  snapshot-only. Relationship mappings whose edge collection carries a
+  persistent index rooted at `_from`/`_to` plus discriminator fields, and/or
+  edge attributes that duplicate endpoint-vertex properties, gain a `vci` block
+  (`indexLevel` with access pattern out-edge/in-edge/both + participating
+  fields; `denormalization` with duplicated fields and source collections) and
+  `vciCandidate: true` *alongside* the existing style. A `metadata.vci` summary
+  lists the relationships involved. Also fixes a latent gap where the LLM path
+  dropped `metadata.multitenancy` from the typed result.
+
 ### Transpiler, lineage & egress features (Milestone B)
 
 - **SPARQL export target.** `export_mapping(analysis, target="sparql")` (and the

@@ -45,6 +45,7 @@ from .statistics import (
 from .tenant_scope import annotate_tenant_scope
 from .types import AnalysisMetadata, AnalysisResult, now_iso
 from .utils import analysis_cache_storage_key, stable_dumps
+from .vci import detect_vci
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,26 @@ def _apply_shard_families(data: dict[str, Any]) -> None:
     if not isinstance(pm, dict):
         return
     pm["shardFamilies"] = families
+
+
+def _apply_vci(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Detect vertex-centric-index patterns and annotate relationship mappings
+    with a ``vci`` block + ``metadata.vci`` summary.
+
+    Always safe to call; a no-op when there are no relationship mappings or no
+    VCI signals are present.
+    """
+    summary = detect_vci(data, snapshot)
+    if summary is None:
+        return
+    meta = data.setdefault("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["metadata"] = meta
+    meta["vci"] = summary
 
 
 def _apply_multitenancy(
@@ -514,6 +535,7 @@ class AgenticSchemaAnalyzer:
             _apply_sharding_profile(stats_holder, snapshot)
             _apply_shard_families(stats_holder)
             _apply_multitenancy(stats_holder, snapshot)
+            _apply_vci(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             baseline_conceptual = ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json()
             baseline_physical = PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json()
@@ -548,6 +570,7 @@ class AgenticSchemaAnalyzer:
                 sharding_profile_status=stats_holder["metadata"].get("shardingProfileStatus"),
                 multitenancy=stats_holder["metadata"].get("multitenancy"),
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
+                vci=stats_holder["metadata"].get("vci"),
                 arango_product=_arango_product_dict_for(snapshot),
                 arango_product_status=_arango_product_status_for(snapshot),
                 quality_metrics=baseline_quality,
@@ -646,6 +669,7 @@ class AgenticSchemaAnalyzer:
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
+        _apply_vci(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -720,6 +744,7 @@ class AgenticSchemaAnalyzer:
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
+        _apply_vci(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -808,6 +833,13 @@ class AgenticSchemaAnalyzer:
             sharding_profile_status=data.get("metadata", {}).get("shardingProfileStatus")
             if isinstance(data.get("metadata"), dict)
             else None,
+            multitenancy=data.get("metadata", {}).get("multitenancy")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            multitenancy_status=data.get("metadata", {}).get("multitenancyStatus")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            vci=data.get("metadata", {}).get("vci") if isinstance(data.get("metadata"), dict) else None,
             quality_metrics=quality_metrics,
             health_score=health_score,
         )
