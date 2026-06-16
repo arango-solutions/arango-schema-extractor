@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+(no changes)
+
+## 0.7.0
+
 ### Internal refactor (no behavior change)
 
 - Split the two largest modules for maintainability and isolated testing:
