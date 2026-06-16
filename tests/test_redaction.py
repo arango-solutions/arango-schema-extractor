@@ -48,6 +48,48 @@ def test_mask_field_values_hides_values_keeps_shape():
     assert SNAPSHOT["collections"][0]["sample_field_value_counts"]["status"][0]["value"] == "active"
 
 
+def test_mask_field_values_masks_by_type_keys_and_edge_endpoints():
+    snap = {
+        "collections": [
+            {
+                "name": "nodes",
+                "type": "document",
+                "observed_fields": {"by_type": {"SECRETPERSON": ["ssn"], "SECRETORG": []}},
+                "sample_field_value_counts": {
+                    "type": [{"value": "SECRETPERSON", "count": 1}, {"value": "SECRETORG", "count": 1}]
+                },
+            },
+            {
+                "name": "edges",
+                "type": "edge",
+                "observed_fields": {"by_type": {"SECRETREL": []}},
+                "edge_endpoints": {
+                    "from_collections": ["nodes"],
+                    "to_collections": ["nodes"],
+                    "entity_types_by_relation": {
+                        "SECRETREL": {"from_entity_types": ["SECRETPERSON"], "to_entity_types": ["SECRETORG"]}
+                    },
+                },
+                "sample_field_value_counts": {"relation": [{"value": "SECRETREL", "count": 1}]},
+            },
+        ]
+    }
+    out = redact_snapshot_for_egress(snap, RedactionOptions(mask_field_values=True))
+    blob = json.dumps(out)
+    # No sensitive discriminator value leaks anywhere in the egress payload.
+    for secret in ("SECRETPERSON", "SECRETORG", "SECRETREL"):
+        assert secret not in blob, f"{secret} leaked: {blob}"
+    # Field names + collection names + structure are preserved.
+    assert "ssn" in blob
+    assert out["collections"][1]["edge_endpoints"]["from_collections"] == ["nodes"]
+    # Same value masks to the same token everywhere (stable map): the by_type
+    # keys must equal the masked values seen in sample_field_value_counts.
+    nodes = out["collections"][0]
+    assert set(nodes["observed_fields"]["by_type"].keys()) == {
+        c["value"] for c in nodes["sample_field_value_counts"]["type"]
+    }
+
+
 def test_both_modes_compose():
     out = redact_snapshot_for_egress(SNAPSHOT, RedactionOptions(strip_samples=True, mask_field_values=True))
     coll = out["collections"][0]
