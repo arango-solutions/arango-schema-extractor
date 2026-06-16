@@ -8,7 +8,7 @@
   "properties": {
     "contractVersion": { "const": "1" },
     "requestId": { "type": "string" },
-    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl"] },
+    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve"] },
     "ok": { "type": "boolean" },
 
     "tooling": {
@@ -37,7 +37,9 @@
         { "$ref": "#/$defs/SnapshotResult" },
         { "$ref": "#/$defs/ExportResult" },
         { "$ref": "#/$defs/DocsResult" },
-        { "$ref": "#/$defs/OwlResult" }
+        { "$ref": "#/$defs/OwlResult" },
+        { "$ref": "#/$defs/DiffResult" },
+        { "$ref": "#/$defs/ResolveResult" }
       ]
     },
 
@@ -700,6 +702,46 @@
           "type": "object",
           "additionalProperties": true,
           "description": "JSON-LD serialization of the conceptual OWL model (classes, subClassOf hierarchy, object properties with domain/range, observed cardinality + functional/inverse-functional characteristics, owl:inverseOf, and phys: annotations)."
+        }
+      }
+    },
+
+    "DiffResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diff"],
+      "properties": {
+        "diff": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Structural diff between input.previousAnalysis and input.analysis (PRD §3.13.3): added/removed/changed entities & relationships, mapping-style flips, and the health-score delta.",
+          "required": ["changed", "entities", "relationships", "mappingStyles"],
+          "properties": {
+            "changed": { "type": "boolean" },
+            "entities": { "type": "object", "additionalProperties": true },
+            "relationships": { "type": "object", "additionalProperties": true },
+            "mappingStyles": { "type": "object", "additionalProperties": true },
+            "healthScore": { "type": "object", "additionalProperties": true },
+            "summary": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+
+    "ResolveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution"],
+      "properties": {
+        "resolution": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Flattened label/relationship-type → AQL lookup for a Cypher transpiler (build_cypher_resolution_index): per entity the injection-safe match fragment, per relationship the traversal fragment, or an error block for incomplete mappings.",
+          "properties": {
+            "target": { "const": "cypher" },
+            "entities": { "type": "object", "additionalProperties": true },
+            "relationships": { "type": "object", "additionalProperties": true }
+          }
         }
       }
     }

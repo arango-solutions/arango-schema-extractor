@@ -8,7 +8,7 @@
   "properties": {
     "contractVersion": { "const": "1" },
     "requestId": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl"] },
+    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve"] },
 
     "connection": {
       "type": "object",
@@ -148,6 +148,7 @@
       "description": "Used for operations that transform existing analysis/snapshot payloads.",
       "properties": {
         "analysis": { "$ref": "#/$defs/AnalysisOutput" },
+        "previousAnalysis": { "$ref": "#/$defs/AnalysisOutput" },
         "snapshot": { "$ref": "#/$defs/PhysicalSnapshot" }
       }
     }
@@ -219,11 +220,20 @@
       "then": { "required": ["connection"] }
     },
     {
-      "if": { "properties": { "operation": { "enum": ["export", "docs", "owl"] } } },
+      "if": { "properties": { "operation": { "enum": ["export", "docs", "owl", "resolve"] } } },
       "then": {
         "required": ["input"],
         "properties": {
           "input": { "required": ["analysis"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "diff" } } },
+      "then": {
+        "required": ["input"],
+        "properties": {
+          "input": { "required": ["analysis", "previousAnalysis"] }
         }
       }
     }

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### New v1 tool-contract operations
+
+- **`diff`** — structural diff of `input.previousAnalysis` vs `input.analysis`
+  (wraps `diff_analyses`); result under `result.diff`.
+- **`resolve`** — Cypher AQL resolution index from `input.analysis` (wraps
+  `build_cypher_resolution_index`); result under `result.resolution`.
+  Both promote previously library-only helpers to first-class operations.
+
 ### Richer OWL export (PRD §6.3)
 
 - Turtle export now emits **`rdfs:subClassOf`** hierarchy from shard families,

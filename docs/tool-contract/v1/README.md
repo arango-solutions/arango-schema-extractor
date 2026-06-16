@@ -28,10 +28,16 @@ The tool is designed to be callable via:
 - `snapshot`: connect to ArangoDB and return a deterministic physical schema snapshot
 - `analyze`: snapshot + run the agentic analyzer, returning analysis JSON
 - `export`: export analysis to a stable JSON contract for transpilers
-  (currently only the `cypher` target is supported; additional targets
+  (`cypher` or `sparql` via `outputOptions.exportTarget`; additional targets
   may be added under the same operation without bumping `contractVersion`)
 - `docs`: produce Markdown documentation from an analysis result
-- `owl`: export conceptual schema + physical mapping as OWL Turtle
+- `owl`: export conceptual schema + physical mapping as OWL
+  (`turtle` by default, or `jsonld` via `outputOptions.owlFormat`)
+- `diff`: structural diff of `input.previousAnalysis` vs `input.analysis`
+  (added/removed/changed entities & relationships, mapping-style flips,
+  health-score delta)
+- `resolve`: flattened label/relationship-type → AQL resolution index for a
+  Cypher transpiler, built from `input.analysis`
 
 ## Request / Response
 

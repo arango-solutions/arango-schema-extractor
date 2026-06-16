@@ -22,9 +22,10 @@ from .defaults import (
     DEFAULT_TIMEOUT_MS,
     FALLBACK_LIBRARY_VERSION,
 )
+from .diff import diff_analyses
 from .docs import generate_schema_docs
 from .errors import SchemaAnalyzerError
-from .exports import export_mapping
+from .exports import build_cypher_resolution_index, export_mapping
 from .owl_export import export_conceptual_model_as_jsonld, export_conceptual_model_as_owl_turtle
 from .redaction import RedactionOptions
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
@@ -33,7 +34,7 @@ from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_re
 logger = logging.getLogger(__name__)
 
 
-Operation = Literal["analyze", "snapshot", "export", "docs", "owl"]
+Operation = Literal["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve"]
 
 
 def _library_version() -> str:
@@ -288,6 +289,25 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
         analysis_in = input_obj.get("analysis")
         if not isinstance(analysis_in, dict):
             raise SchemaAnalyzerError("input.analysis is required", code="INVALID_ARGUMENT")
+
+        if op == "diff":
+            previous = input_obj.get("previousAnalysis")
+            if not isinstance(previous, dict):
+                raise SchemaAnalyzerError("input.previousAnalysis is required for diff", code="INVALID_ARGUMENT")
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"diff": diff_analyses(previous, analysis_in)},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
+
+        if op == "resolve":
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"resolution": build_cypher_resolution_index(analysis_in)},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
 
         if op == "export":
             raw_target = output_options.get("exportTarget")
