@@ -211,8 +211,6 @@ def compare_reports(current: str | Path, baseline: str | Path) -> str:
             cur_val = cur_cal[name]
             delta = cur_val - base_val
             marker = "+" if delta > 0.005 else ("-" if delta < -0.005 else " ")
-            lines.append(
-                f"{'':28} {'':22} {name:>10} {base_val:9.3f} {cur_val:9.3f} {marker}{abs(delta):7.3f}"
-            )
+            lines.append(f"{'':28} {'':22} {name:>10} {base_val:9.3f} {cur_val:9.3f} {marker}{abs(delta):7.3f}")
 
     return "\n".join(lines)

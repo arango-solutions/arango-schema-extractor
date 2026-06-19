@@ -196,12 +196,20 @@ def test_compare_reports_shows_calibration_drift(tmp_path):
 def test_compare_reports_tolerates_legacy_list_baseline(tmp_path):
     # Old reports were a bare list; new code must still diff against them.
     legacy = tmp_path / "legacy.json"
-    legacy.write_text(json.dumps([{
-        "domain": "d1", "variant": "v", "confidence": 0.5,
-        "score": {"entities": {"f1": 0.5}, "relationships": {"f1": 0.5}},
-        "domain_range": {"f1": 0.5},
-        "mapping_style": {"relationships": {"accuracy": 0.5}},
-    }]))
+    legacy.write_text(
+        json.dumps(
+            [
+                {
+                    "domain": "d1",
+                    "variant": "v",
+                    "confidence": 0.5,
+                    "score": {"entities": {"f1": 0.5}, "relationships": {"f1": 0.5}},
+                    "domain_range": {"f1": 0.5},
+                    "mapping_style": {"relationships": {"accuracy": 0.5}},
+                }
+            ]
+        )
+    )
     cur = tmp_path / "cur.json"
     save_eval_report([_result("d1", 0.8, 0.8)], cur)
     out = compare_reports(cur, legacy)

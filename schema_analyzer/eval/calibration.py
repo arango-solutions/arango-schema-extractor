@@ -198,22 +198,32 @@ def compute_calibration(
         lo = i / n_bins
         hi = (i + 1) / n_bins
         if not bucket:
-            bins.append({"lo": round(lo, 4), "hi": round(hi, 4), "count": 0,
-                         "mean_confidence": None, "mean_quality": None, "gap": None})
+            bins.append(
+                {
+                    "lo": round(lo, 4),
+                    "hi": round(hi, 4),
+                    "count": 0,
+                    "mean_confidence": None,
+                    "mean_quality": None,
+                    "gap": None,
+                }
+            )
             continue
         bc = sum(c for c, _ in bucket) / len(bucket)
         bq = sum(q for _, q in bucket) / len(bucket)
         gap = bc - bq
         ece += (len(bucket) / n) * abs(gap)
         mce = max(mce, abs(gap))
-        bins.append({
-            "lo": round(lo, 4),
-            "hi": round(hi, 4),
-            "count": len(bucket),
-            "mean_confidence": round(bc, 4),
-            "mean_quality": round(bq, 4),
-            "gap": round(gap, 4),
-        })
+        bins.append(
+            {
+                "lo": round(lo, 4),
+                "hi": round(hi, 4),
+                "count": len(bucket),
+                "mean_confidence": round(bc, 4),
+                "mean_quality": round(bq, 4),
+                "gap": round(gap, 4),
+            }
+        )
 
     rec_threshold, note = _recommend_threshold(pairs, quality_target=quality_target)
 
