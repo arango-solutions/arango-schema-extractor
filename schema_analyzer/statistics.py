@@ -30,6 +30,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ._arango import aql_execute
 from .defaults import (
     STATISTICS_CARDINALITY_THRESHOLD,
     STATISTICS_DEGREE_ROUND,
@@ -89,9 +90,9 @@ def compute_statistics(
         return None
 
     collections_snapshot = {
-        c.get("name"): c
+        name: c
         for c in (snapshot.get("collections") or [])
-        if isinstance(c, dict) and isinstance(c.get("name"), str)
+        if isinstance(c, dict) and isinstance((name := c.get("name")), str)
     }
 
     collections_out: dict[str, dict[str, Any]] = {}
@@ -223,7 +224,7 @@ def _endpoint_map_from_conceptual(
 
 def _safe_collection_length(db: StandardDatabase, name: str) -> int | None:
     try:
-        cursor = db.aql.execute("RETURN LENGTH(@@c)", bind_vars={"@c": name})
+        cursor = aql_execute(db, "RETURN LENGTH(@@c)", bind_vars={"@c": name})
         for row in cursor:
             return int(row)
     except Exception as exc:  # pragma: no cover — logged path
@@ -248,7 +249,8 @@ def _safe_filtered_count(
     if type_value is None:
         return None
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR d IN @@c FILTER d[@field] == @val COLLECT WITH COUNT INTO c RETURN c",
             bind_vars={"@c": collection, "field": type_field, "val": type_value},
         )

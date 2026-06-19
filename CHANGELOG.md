@@ -4,6 +4,109 @@
 
 (no changes)
 
+## 0.7.0
+
+### Internal refactor (no behavior change)
+
+- Split the two largest modules for maintainability and isolated testing:
+  `analyzer.py` (894→648 lines) extracted its post-inference enrichment pipeline
+  into `enrichment.py`; `snapshot.py` (928→696 lines) extracted its DB-free
+  type-discriminator heuristics into `type_detection.py`. Public import paths
+  are preserved.
+
+### CLI convenience commands
+
+- New subcommands that connect to a database and emit a single artifact without
+  hand-authoring v1 request JSON: `arangodb-schema-analyzer snapshot|analyze|docs|owl`
+  with `--url/--database/--user/--password|--password-env-var`, plus
+  `--provider/--model/--api-key-env-var` (analyze/docs/owl) and `--format`
+  (owl). The default stdin/stdout tool mode and `eval` are unchanged.
+- **Contract fix:** `metadata.vci` / `metadata.rdfTopology` are now declared
+  nullable in the v1 response schema (they serialize as `null` when no signal
+  is found); a baseline analyze response previously failed internal validation.
+
+### New v1 tool-contract operations
+
+- **`diff`** — structural diff of `input.previousAnalysis` vs `input.analysis`
+  (wraps `diff_analyses`); result under `result.diff`.
+- **`resolve`** — Cypher AQL resolution index from `input.analysis` (wraps
+  `build_cypher_resolution_index`); result under `result.resolution`.
+  Both promote previously library-only helpers to first-class operations.
+
+### Richer OWL export (PRD §6.3)
+
+- Turtle export now emits **`rdfs:subClassOf`** hierarchy from shard families,
+  **`owl:FunctionalProperty` / `owl:InverseFunctionalProperty`** +
+  `phys:observedCardinality` derived from the statistics cardinality pattern, and
+  **`owl:inverseOf`** from an explicit relationship `inverseOf` field.
+- New **JSON-LD export**: `export_conceptual_model_as_jsonld(analysis)` and the
+  `owl` operation's `outputOptions.owlFormat: "jsonld"` (returns `result.jsonld`).
+
+### Roadmap detections
+
+- **RDF-topology (RPT) detection + TRIPLE mapping style** (PRD §6.1/§6.2).
+  Deterministic, snapshot-only. Recognizes RDF triple/quad stores via collection
+  naming (`_triples`, `quads`, …) or a subject/predicate/object field signature,
+  and `rdf:type` assertion edges via sampled predicate values. Emits
+  `metadata.rdfTopology` and annotates affected physical-mapping entries with
+  `tripleCandidate: true` + a `triple` (`{"style": "TRIPLE"}`) block alongside the
+  native style.
+- **Vertex-Centric Index (VCI) detection** (PRD §6.1/§6.2). Deterministic,
+  snapshot-only. Relationship mappings whose edge collection carries a
+  persistent index rooted at `_from`/`_to` plus discriminator fields, and/or
+  edge attributes that duplicate endpoint-vertex properties, gain a `vci` block
+  (`indexLevel` with access pattern out-edge/in-edge/both + participating
+  fields; `denormalization` with duplicated fields and source collections) and
+  `vciCandidate: true` *alongside* the existing style. A `metadata.vci` summary
+  lists the relationships involved. Also fixes a latent gap where the LLM path
+  dropped `metadata.multitenancy` from the typed result.
+
+### Transpiler, lineage & egress features (Milestone B)
+
+- **SPARQL export target.** `export_mapping(analysis, target="sparql")` (and the
+  v1 `export` operation with `outputOptions.exportTarget="sparql"`) emits an RDF
+  vocabulary view — classes, object properties with IRIs/domains/ranges —
+  annotated with the physical mapping so a SPARQL→AQL transpiler can resolve
+  triple patterns to collections and edge traversals. The response contract
+  gains a `SparqlExport` shape.
+- **Cypher resolution adapter.** New `build_cypher_resolution_index(analysis)`
+  precomputes, per entity label and relationship type, the injection-safe AQL
+  match/traversal fragment a Cypher transpiler would otherwise re-derive;
+  incomplete mappings are reported with an `error` block instead of crashing.
+- **Analysis diff.** New `diff_analyses(previous, current)` (PRD §3.13.3)
+  returns added/removed/changed entities and relationships, mapping-style flips,
+  and the health-score delta — for stale detection and re-analysis workflows.
+- **Element-level provenance.** Every conceptual entity/relationship and
+  physical-mapping entry is tagged with `source` (`llm` / `baseline` / `human`,
+  PRD §3.13.2); reconciliation-backfilled collections are correctly attributed
+  to `baseline` even on an LLM run, and pre-existing `human` tags are preserved.
+- **LLM redaction modes.** New `analysisOptions.redaction` (`stripSamples`,
+  `maskFieldValues`, PRD §4.3) scrubs sampled documents and concrete field
+  values from the snapshot before LLM egress while preserving structure; the
+  local snapshot used for baseline/reconciliation/statistics is unaffected.
+
+### Quality & developer experience (Milestone A)
+
+- **Quality metrics + health score.** Every analysis now stamps
+  `metadata.qualityMetrics` (deterministic structural signals — connectivity,
+  orphan ratio, property richness, dangling-relationship consistency — plus
+  grounding signals that check the physical mapping against the snapshot) and
+  a normalized 0–100 `metadata.healthScore` composite (PRD §3.12.3). See
+  `schema_analyzer/quality.py`. The v1 response contract documents both fields
+  (`metadata` already allowed additional properties, so this is backward
+  compatible).
+- **mypy is now a blocking CI gate.** The `pydantic.mypy` plugin is enabled and
+  the previously-tolerated type backlog (python-arango `Result[...]` unions,
+  alias mismatches, `Any` leaks) was cleared. A small typed adapter,
+  `schema_analyzer/_arango.py`, centralizes the synchronous-path casts.
+- **Coverage floor raised 65% → 80%**, with new tests for the LLM retry/repair
+  loop, the async analysis path, and the stdlib OpenRouter provider.
+- **Contract-parity test.** `tests/test_tool_contract_schema_parity.py` asserts
+  the documented (`docs/tool-contract/v1`) and bundled
+  (`schema_analyzer/tool_contract/v1`) JSON schemas stay byte-identical.
+- **Async path verified.** All shipped providers implement `agenerate`; the
+  async `analyze_physical_schema_async` entrypoint now has end-to-end coverage.
+
 ## 0.6.1
 
 Bugfix and hardening release. No new user-facing features and no

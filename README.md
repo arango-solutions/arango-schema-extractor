@@ -96,6 +96,21 @@ arangodb-schema-analyzer [--request FILE] [--out FILE] [--pretty] [-v|--verbose]
 - `--pretty` — pretty-print JSON output
 - `-v` / `--verbose` — enable verbose logging
 
+### Convenience subcommands
+
+Point at a database and emit a single artifact directly (no hand-written
+request JSON):
+
+```bash
+arangodb-schema-analyzer snapshot --url http://localhost:8529 --database mydb --password ...
+arangodb-schema-analyzer analyze  --database mydb --provider openai --api-key-env-var OPENAI_API_KEY
+arangodb-schema-analyzer docs     --database mydb            # Markdown
+arangodb-schema-analyzer owl      --database mydb --format jsonld
+```
+
+Connection args fall back to `ARANGO_URL`/`ARANGO_DB`/`ARANGO_USER`/`ARANGO_PASS`
+env vars. Prefer `--password-env-var NAME` over inline `--password`.
+
 ## Evaluation CLI
 
 Run analysis quality benchmarks against domain packs:
@@ -123,8 +138,16 @@ Exports (see `schema_analyzer/__init__.py`):
 - `ConceptualSchema` — conceptual schema dataclass
 - `PhysicalMapping` — physical mapping dataclass with AQL helpers
 - `generate_schema_docs(analysis)` — Markdown documentation generator
-- `export_mapping(analysis, target)` — transpiler export (currently only `cypher`)
+- `export_mapping(analysis, target)` — transpiler export (`cypher` or `sparql`)
+- `build_cypher_resolution_index(analysis)` — flattened label/rel-type → AQL
+  lookup for a Cypher transpiler (built on the `PhysicalMapping` AQL helpers)
+- `diff_analyses(previous, current)` — structural diff between two analyses
+  (added/removed/changed entities & relationships, mapping-style flips,
+  health-score delta)
 - `export_conceptual_model_as_owl_turtle(analysis)` — OWL Turtle export
+  (with `rdfs:subClassOf`, functional/inverse-functional characteristics,
+  observed cardinality, and `owl:inverseOf`)
+- `export_conceptual_model_as_jsonld(analysis)` — OWL conceptual model as JSON-LD
 - `register_provider(name, ...)` — register custom LLM providers
 - `list_providers()` — list registered LLM provider names
 - `run_tool(request_dict)` — programmatic entrypoint to the v1 tool contract
@@ -138,6 +161,12 @@ Exports (see `schema_analyzer/__init__.py`):
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
 
+- **Unreleased** — `metadata.qualityMetrics` + `metadata.healthScore`
+  (structural/grounding signals + 0–100 composite), element-level `source`
+  provenance (`llm`/`baseline`/`human`), `diff_analyses()`, a **SPARQL** export
+  target, a Cypher resolution adapter, and `analysisOptions.redaction`
+  (`stripSamples` / `maskFieldValues`) for LLM-egress scrubbing. mypy is now a
+  blocking CI gate and the coverage floor is 80%.
 - **0.6.0 — Shard-family detection** (`physicalMapping.shardFamilies`)
   groups conceptual entities that share an identical property set and a
   common name suffix (the per-source / per-repo collection-duplication

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from jsonschema import Draft202012Validator
 
@@ -23,7 +23,7 @@ def _load_schema_from_package(rel_path: str) -> dict[str, Any]:
         from importlib.resources import files
 
         p = files("schema_analyzer.tool_contract.v1").joinpath(rel_path)
-        return json.loads(p.read_text(encoding="utf-8"))
+        return cast("dict[str, Any]", json.loads(p.read_text(encoding="utf-8")))
     except Exception as e:
         raise RuntimeError(f"Failed to load bundled tool contract schema: {rel_path}") from e
 

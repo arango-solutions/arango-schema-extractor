@@ -180,10 +180,10 @@ def reconcile_physical_mapping(
     existing_entity_names: set[str] = set(pm_entities.keys())
     existing_rel_types: set[str] = set(pm_rels.keys())
     existing_cs_entity_names: set[str] = {
-        e.get("name") for e in cs_entities if isinstance(e, dict) and isinstance(e.get("name"), str)
+        name for e in cs_entities if isinstance(e, dict) and isinstance((name := e.get("name")), str)
     }
     existing_cs_rel_types: set[str] = {
-        r.get("type") for r in cs_rels if isinstance(r, dict) and isinstance(r.get("type"), str)
+        rtype for r in cs_rels if isinstance(r, dict) and isinstance((rtype := r.get("type")), str)
     }
 
     missing_set = set(missing)

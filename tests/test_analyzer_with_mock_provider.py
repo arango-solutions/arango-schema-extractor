@@ -60,6 +60,12 @@ def test_analyze_with_mock_provider_parses_json(monkeypatch):
     res = analyzer.analyze_physical_schema(FakeDB(), sample_limit_per_collection=0)
     assert res.metadata.confidence == 0.8
     assert res.metadata.review_required is False
+    # Quality metrics + composite health score are stamped on every analysis.
+    assert res.metadata.health_score is not None
+    assert 0 <= res.metadata.health_score <= 100
+    assert res.metadata.quality_metrics is not None
+    assert "structural" in res.metadata.quality_metrics
+    assert "grounding" in res.metadata.quality_metrics
 
 
 # ── tenant-scope wire-through (issue #13) ────────────────────────────────

@@ -68,6 +68,16 @@ class AnalysisMetadata(BaseModel):
     # top-level key. Both absent when the snapshot has no user collections.
     multitenancy: dict[str, Any] | None = Field(default=None, alias="multitenancy")
     multitenancy_status: str | None = Field(default=None, alias="multitenancyStatus")
+    # Populated by the vertex-centric-index detector (vci.py, PRD §6.1/§6.2).
+    # Summary of which relationships carry a VCI pattern; per-relationship
+    # detail lives under physicalMapping.relationships[type].vci. Absent when
+    # no VCI signals were found.
+    vci: dict[str, Any] | None = Field(default=None, alias="vci")
+    # Populated by the RDF-topology detector (rdf_topology.py, PRD §6.1/§6.2).
+    # Classifies whether the schema is stored as RDF triples / rdf:type edges
+    # (the TRIPLE mapping style) with supporting evidence. Absent when the
+    # snapshot has no collections to classify.
+    rdf_topology: dict[str, Any] | None = Field(default=None, alias="rdfTopology")
     # Populated by the Arango product detector (arango_products.py).
     # Carries any first-party Arango product artefacts found in the
     # snapshot (today: Autograph corpus + KG projects). Empty
@@ -76,6 +86,15 @@ class AnalysisMetadata(BaseModel):
     # ``arango_product`` block when one or more projects were found.
     arango_product: dict[str, Any] | None = Field(default=None, alias="arangoProduct")
     arango_product_status: str | None = Field(default=None, alias="arangoProductStatus")
+    # Populated by the quality-metrics pass (PRD §3.12.3). ``quality_metrics``
+    # carries deterministic structural (connectivity, orphan ratio, property
+    # richness, consistency flags) and grounding (mapping-vs-snapshot
+    # faithfulness) signals. ``health_score`` is a normalized 0–100 composite
+    # that folds those signals together with ``confidence`` so consumers can
+    # gate on a single scalar while still being able to drill into the
+    # contributing components.
+    quality_metrics: dict[str, Any] | None = Field(default=None, alias="qualityMetrics")
+    health_score: int | None = Field(default=None, alias="healthScore")
 
 
 class AnalysisResult(BaseModel):

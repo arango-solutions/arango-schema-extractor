@@ -4,12 +4,13 @@ import contextlib
 import random
 import string
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ..defaults import DEFAULT_EVAL_SCALE, DEFAULT_EVAL_SEED
 
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
+    from arango.graph import Graph
 
 EntityStyle = Literal["COLLECTION", "GENERIC_WITH_TYPE"]
 RelStyle = Literal["DEDICATED_COLLECTION", "GENERIC_WITH_TYPE"]
@@ -152,7 +153,8 @@ def materialize_domain_variant(
             if variant.entity_style == "GENERIC_WITH_TYPE":
                 doc[variant.entity_type_field] = et
             # include a couple properties if present
-            props = e.get("properties") if isinstance(e.get("properties"), list) else []
+            raw_props = e.get("properties")
+            props = raw_props if isinstance(raw_props, list) else []
             for p in props[:2]:
                 doc[p] = f"{p}_{i}"
             docs.append(doc)
@@ -180,7 +182,8 @@ def materialize_domain_variant(
             if variant.rel_style == "GENERIC_WITH_TYPE":
                 edge[variant.rel_type_field] = rt
             # add one rel property if present
-            props = r.get("properties") if isinstance(r.get("properties"), list) else []
+            raw_props = r.get("properties")
+            props = raw_props if isinstance(raw_props, list) else []
             if props:
                 edge[props[0]] = f"{props[0]}_{i}"
             edges.append(edge)
@@ -191,7 +194,7 @@ def materialize_domain_variant(
         graph_name = f"{domain_spec.get('domain', 'domain')}_{variant.name}"
         try:
             if not db.has_graph(graph_name):
-                graph = db.create_graph(graph_name)
+                graph = cast("Graph", db.create_graph(graph_name))
                 # If dedicated edge collections, create edge definitions per rel type.
                 if variant.rel_style == "DEDICATED_COLLECTION":
                     for r in rels:

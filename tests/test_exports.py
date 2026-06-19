@@ -26,7 +26,7 @@ def test_export_mapping_cypher():
 
 def test_export_mapping_unsupported_target():
     with pytest.raises(ValueError, match="Unsupported export target"):
-        export_mapping(_SAMPLE, target="sparql")
+        export_mapping(_SAMPLE, target="gremlin")
 
 
 # ── Issue #6 — key naming regression tests ──────────────────────────

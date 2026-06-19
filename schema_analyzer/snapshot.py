@@ -7,256 +7,32 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
-import re
 
+from ._arango import (
+    aql_execute,
+    collection_count,
+    collection_indexes,
+    collection_properties,
+    database_graphs,
+    graph_properties,
+)
 from .defaults import (
-    MAX_BROADENED_TYPE_CANDIDATES,
-    MAX_TYPE_FIELD_DISTINCT_VALUES,
-    MAX_TYPE_VALUE_LENGTH,
-    MIN_TYPE_FIELD_COVERAGE_FRACTION,
-    MIN_TYPE_FIELD_DISTINCT_VALUES,
     SAMPLE_VALUE_TOP_K,
     SNAPSHOT_FORMAT_VERSION,
 )
-from .utils import pascal_case, sha256_hex, singularize, stable_dumps
+from .type_detection import (
+    _detect_candidate_type_fields,
+    _pick_best_type_field,
+    _type_values_for_field,
+    infer_entity_type_from_collection_name,
+    infer_relationship_type_from_collection_name,
+)
+from .utils import sha256_hex, stable_dumps
 
 logger = logging.getLogger(__name__)
 
-CANDIDATE_TYPE_KEYS: list[str] = [
-    "type",
-    "_type",
-    "label",
-    "labels",
-    "kind",
-    "entityType",
-    "relation",
-    "relType",
-]
-
 _SYSTEM_FIELDS = frozenset({"_key", "_id", "_rev", "_from", "_to"})
 _PROPERTY_SAMPLE_LIMIT = 10
-
-PREFERRED_DOC_TYPE_FIELDS: list[str] = ["type", "_type", "kind", "entityType", "label"]
-PREFERRED_EDGE_TYPE_FIELDS: list[str] = ["relation", "relType", "type"]
-
-
-def infer_entity_type_from_collection_name(collection_name: str) -> str:
-    return pascal_case(singularize(collection_name))
-
-
-def infer_relationship_type_from_collection_name(collection_name: str) -> str:
-    s = collection_name.replace("-", "_")
-    return s.upper()
-
-
-_DISCRIMINATOR_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
-_DISCRIMINATOR_VALUE_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
-# Names ending in any of these are (almost) certainly identifiers, not types.
-_ID_SUFFIXES: tuple[str, ...] = ("_id", "id", "_key", "key", "_uuid", "uuid", "_guid", "guid")
-
-
-def _looks_like_discriminator_name(field: str) -> bool:
-    """
-    Heuristic: is this field name *plausibly* a type discriminator?
-
-    We require a short, lowercase, snake_case identifier that is not obviously
-    an ID/key/system field. Broadens the net past ``CANDIDATE_TYPE_KEYS`` so
-    that collections whose type-tag field happens to be spelled ``category``,
-    ``rel_kind``, ``etype`` etc. still get probed.
-    """
-    if not isinstance(field, str) or not field:
-        return False
-    if field.startswith("_"):
-        return False
-    lower = field.lower()
-    if any(lower == suffix or lower.endswith(suffix) for suffix in _ID_SUFFIXES):
-        return False
-    return bool(_DISCRIMINATOR_NAME_RE.match(field))
-
-
-def _detect_candidate_type_fields(sample: dict[str, Any]) -> list[str]:
-    """
-    Enumerate candidate type-discriminator fields from a sample document.
-
-    First the allow-listed names from ``CANDIDATE_TYPE_KEYS`` (fast path,
-    preserves deterministic ordering for fixtures), then an additional batch
-    of name-pattern matches capped at ``MAX_BROADENED_TYPE_CANDIDATES`` so
-    AQL cost stays bounded.
-    """
-    if not isinstance(sample, dict):
-        return []
-
-    allow_listed: list[str] = [k for k in CANDIDATE_TYPE_KEYS if k in sample]
-    already = set(allow_listed)
-
-    broadened: list[str] = []
-    for k, v in sample.items():
-        if k in already:
-            continue
-        if not _looks_like_discriminator_name(k):
-            continue
-        if not isinstance(v, str):
-            continue
-        if len(v) > MAX_TYPE_VALUE_LENGTH or not _DISCRIMINATOR_VALUE_RE.match(v):
-            continue
-        broadened.append(k)
-        if len(broadened) >= MAX_BROADENED_TYPE_CANDIDATES:
-            break
-
-    return allow_listed + broadened
-
-
-def _iter_scalar_values(v: Any):
-    if v is None:
-        return
-    if isinstance(v, (str, int, float, bool)):
-        yield v
-        return
-    if isinstance(v, list):
-        for x in v:
-            if isinstance(x, (str, int, float, bool)):
-                yield x
-        return
-
-
-def _pick_best_type_field(entry: dict[str, Any], *, is_edge: bool = False) -> str | None:
-    """Pick the best type-discriminator field from snapshot stats.
-
-    Acceptance rules (any failure disqualifies the field):
-
-    * Distinct value count in
-      ``[MIN_TYPE_FIELD_DISTINCT_VALUES, MAX_TYPE_FIELD_DISTINCT_VALUES]``.
-      The upper bound rejects high-cardinality ID-like fields that happen
-      to pass name-pattern checks (e.g. ``comment_id`` with one distinct
-      value per document).
-    * Coverage fraction of the top-K observed distinct values, relative to
-      the collection's document ``count``, is at least
-      ``MIN_TYPE_FIELD_COVERAGE_FRACTION``. Fields whose non-null coverage
-      is sparse do not look like a type tag.
-    * Every observed value is a string of at most ``MAX_TYPE_VALUE_LENGTH``
-      characters matching ``[A-Za-z0-9_-]+``. Free-form content is not a
-      type label.
-
-    Among the candidates that pass, the field with the most distinct values
-    wins (tie-broken by the preferred-name ordering).
-
-    Edge special case — a single-distinct-value field is accepted as a
-    discriminator when that single value differs from both the collection
-    name and its derived relationship type. This disambiguates a genuine
-    generic-but-currently-single-type edge collection from a dedicated PG
-    edge that carries a redundant metadata field (e.g. ``mentions`` edges
-    with ``relation = "mentions"``).
-    """
-    candidates = entry.get("candidate_type_fields") or []
-    value_counts = entry.get("sample_field_value_counts") or {}
-    total_docs = int(entry.get("count") or 0)
-    preferred = PREFERRED_EDGE_TYPE_FIELDS if is_edge else PREFERRED_DOC_TYPE_FIELDS
-    ordered = [c for c in preferred if c in candidates] + [c for c in candidates if c not in preferred]
-
-    best: str | None = None
-    best_n = 0
-    for f in ordered:
-        items = value_counts.get(f)
-        if not _passes_distribution_shape(items, total_docs):
-            continue
-        n = len({str(it["value"]) for it in items if isinstance(it, dict) and "value" in it})
-        if n > best_n:
-            best = f
-            best_n = n
-
-    if best is not None and MIN_TYPE_FIELD_DISTINCT_VALUES <= best_n <= MAX_TYPE_FIELD_DISTINCT_VALUES:
-        return best
-
-    if is_edge:
-        single = _single_value_edge_fallback(entry, value_counts, ordered)
-        if single:
-            return single
-
-    return None
-
-
-def _passes_distribution_shape(
-    items: Any,
-    total_docs: int,
-) -> bool:
-    """
-    Gate a candidate field on its observed value distribution.
-
-    Returns True iff:
-      * ``items`` is a list of ``{"value", "count"}`` dicts,
-      * every value is a string matching the discriminator shape rule,
-      * the distinct count is within
-        ``[MIN_TYPE_FIELD_DISTINCT_VALUES, MAX_TYPE_FIELD_DISTINCT_VALUES]``,
-      * the sum of observed counts covers at least
-        ``MIN_TYPE_FIELD_COVERAGE_FRACTION`` of ``total_docs``
-        (or ``total_docs`` is unknown / 0, in which case we accept based on
-        distinct count alone since we can't compute the ratio).
-    """
-    if not isinstance(items, list) or not items:
-        return False
-    distinct: set[str] = set()
-    observed_count = 0
-    for it in items:
-        if not isinstance(it, dict) or "value" not in it:
-            return False
-        v = it["value"]
-        if not isinstance(v, str):
-            return False
-        if len(v) > MAX_TYPE_VALUE_LENGTH or not _DISCRIMINATOR_VALUE_RE.match(v):
-            return False
-        distinct.add(v)
-        c = it.get("count")
-        if isinstance(c, int) and c > 0:
-            observed_count += c
-    n_distinct = len(distinct)
-    if n_distinct < MIN_TYPE_FIELD_DISTINCT_VALUES:
-        # Single-value fallback is handled separately upstream.
-        return n_distinct == 1
-    if n_distinct > MAX_TYPE_FIELD_DISTINCT_VALUES:
-        return False
-    return not (
-        total_docs > 0 and observed_count > 0 and (observed_count / total_docs) < MIN_TYPE_FIELD_COVERAGE_FRACTION
-    )
-
-
-def _single_value_edge_fallback(
-    entry: dict[str, Any],
-    value_counts: dict[str, Any],
-    ordered: list[str],
-) -> str | None:
-    """Accept a single-distinct-value field on an edge collection when its
-    value is not just the collection name echoed back (see docstring on
-    ``_pick_best_type_field``)."""
-    for f in ordered:
-        items = value_counts.get(f)
-        if not isinstance(items, list) or len(items) != 1:
-            continue
-        first = items[0]
-        if not isinstance(first, dict) or "value" not in first:
-            continue
-        raw = first["value"]
-        if not isinstance(raw, str):
-            continue
-        single_val = raw.strip().upper().replace("-", "_")
-        col_name = str(entry.get("name", "")).strip().upper().replace("-", "_")
-        derived = infer_relationship_type_from_collection_name(entry.get("name", ""))
-        if single_val and single_val != col_name and single_val != derived:
-            return f
-    return None
-
-
-def _type_values_for_field(entry: dict[str, Any], field: str) -> list[str]:
-    """Extract sorted distinct type values for a field from snapshot stats."""
-    items = (entry.get("sample_field_value_counts") or {}).get(field)
-    if not isinstance(items, list):
-        return []
-    return sorted(
-        {
-            str(it["value"]).strip()
-            for it in items
-            if isinstance(it, dict) and "value" in it and str(it["value"]).strip()
-        }
-    )
 
 
 def _detect_type_fields_via_collect(
@@ -268,7 +44,8 @@ def _detect_type_fields_via_collect(
     Unlike LIMIT-based sampling, this scans all documents and finds every distinct value.
     """
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR d IN @@c LIMIT 1 RETURN d",
             bind_vars={"@c": collection_name},
         )
@@ -287,7 +64,8 @@ def _detect_type_fields_via_collect(
     value_counts: dict[str, list[dict[str, Any]]] = {}
     for key in candidates:
         try:
-            cursor = db.aql.execute(
+            cursor = aql_execute(
+                db,
                 "FOR d IN @@c "
                 "COLLECT val = d[@field] WITH COUNT INTO cnt "
                 "FILTER val != null "
@@ -325,7 +103,8 @@ def _detect_observed_fields(
         result: dict[str, list[str]] = {}
         for tv in type_values:
             try:
-                cursor = db.aql.execute(
+                cursor = aql_execute(
+                    db,
                     "FOR d IN @@c FILTER d[@field] == @val LIMIT @lim RETURN ATTRIBUTES(d)",
                     bind_vars={
                         "@c": collection_name,
@@ -344,7 +123,8 @@ def _detect_observed_fields(
         return {"by_type": result}
     else:
         try:
-            cursor = db.aql.execute(
+            cursor = aql_execute(
+                db,
                 "FOR d IN @@c LIMIT @lim RETURN ATTRIBUTES(d)",
                 bind_vars={"@c": collection_name, "lim": _PROPERTY_SAMPLE_LIMIT},
             )
@@ -375,7 +155,8 @@ def _detect_edge_endpoints(
     3. No relation type field: just report from/to collections.
     """
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR e IN @@c "
             "COLLECT fromCol = PARSE_IDENTIFIER(e._from).collection, "
             "toCol = PARSE_IDENTIFIER(e._to).collection "
@@ -415,7 +196,8 @@ def _detect_edge_endpoints(
 
         if node_type_field:
             try:
-                cursor = db.aql.execute(
+                cursor = aql_execute(
+                    db,
                     "FOR e IN @@ec "
                     "LET fromDoc = DOCUMENT(e._from) "
                     "LET toDoc = DOCUMENT(e._to) "
@@ -458,7 +240,8 @@ def _detect_edge_endpoints(
     # Strategy 2: Hybrid/PG — resolve per-relation endpoints by collection
     # name (no DOCUMENT() needed, just PARSE_IDENTIFIER).
     try:
-        cursor = db.aql.execute(
+        cursor = aql_execute(
+            db,
             "FOR e IN @@ec "
             "COLLECT relType = e[@relField], "
             "fromCol = PARSE_IDENTIFIER(e._from).collection, "
@@ -625,7 +408,7 @@ def fingerprint_physical_shape(
         name = str(c.get("name", ""))
         col_type = "edge" if c.get("type") in (3, "edge") else "doc"
         try:
-            idxs = list(db.collection(name).indexes() or [])
+            idxs = collection_indexes(db.collection(name))
         except Exception:
             idxs = []
         digests = sorted(d for d in (_stable_index_digest(i) for i in idxs) if d)
@@ -655,7 +438,7 @@ def fingerprint_physical_counts(
     for c in _iter_user_collections(db, exclude_collections=exclude_collections):
         name = str(c.get("name", ""))
         try:
-            count = db.collection(name).count()
+            count = collection_count(db.collection(name))
         except Exception:
             count = -1
         parts.append(f"{name}:{count}")
@@ -795,17 +578,17 @@ def snapshot_physical_schema(
             continue
 
         try:
-            props = col.properties()
+            props = collection_properties(col)
         except Exception as e:
             props = {"error": str(e)}
 
         try:
-            count = col.count()
+            count = collection_count(col)
         except Exception:
             count = None
 
         try:
-            indexes = _sort_indexes(list(col.indexes() or []))
+            indexes = _sort_indexes(collection_indexes(col))
         except Exception:
             indexes = []
 
@@ -871,7 +654,8 @@ def snapshot_physical_schema(
             cname = entry["name"]
             is_edge = entry["type"] == "edge"
             try:
-                cursor = db.aql.execute(
+                cursor = aql_execute(
+                    db,
                     "FOR d IN @@c LIMIT @limit RETURN d",
                     bind_vars={"@c": cname, "limit": int(sample_limit_per_collection)},
                 )
@@ -888,7 +672,7 @@ def snapshot_physical_schema(
 
     # ── Named graphs (best-effort) ──────────────────────────────────────
     try:
-        graphs = db.graphs()
+        graphs = database_graphs(db)
         snapshot["graphs"] = graphs
         detailed = []
         if isinstance(graphs, list):
@@ -901,7 +685,7 @@ def snapshot_physical_schema(
                 if not name:
                     continue
                 try:
-                    gp = db.graph(name).properties()
+                    gp = graph_properties(db, name)
                     detailed.append(_summarize_graph_props(gp))
                 except Exception as e:
                     detailed.append({"name": name, "error": str(e)})

@@ -8,7 +8,7 @@
   "properties": {
     "contractVersion": { "const": "1" },
     "requestId": { "type": "string" },
-    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl"] },
+    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve"] },
     "ok": { "type": "boolean" },
 
     "tooling": {
@@ -37,7 +37,9 @@
         { "$ref": "#/$defs/SnapshotResult" },
         { "$ref": "#/$defs/ExportResult" },
         { "$ref": "#/$defs/DocsResult" },
-        { "$ref": "#/$defs/OwlResult" }
+        { "$ref": "#/$defs/OwlResult" },
+        { "$ref": "#/$defs/DiffResult" },
+        { "$ref": "#/$defs/ResolveResult" }
       ]
     },
 
@@ -71,7 +73,8 @@
                 "properties": {
                   "name": { "type": "string", "minLength": 1 },
                   "labels": { "type": "array", "items": { "type": "string" } },
-                  "properties": { "type": "array", "items": { "type": "object" } }
+                  "properties": { "type": "array", "items": { "type": "object" } },
+                  "source": { "$ref": "#/$defs/ElementSource" }
                 }
               }
             },
@@ -84,7 +87,8 @@
                   "type": { "type": "string", "minLength": 1 },
                   "fromEntity": { "type": "string", "minLength": 1 },
                   "toEntity": { "type": "string", "minLength": 1 },
-                  "properties": { "type": "array", "items": { "type": "object" } }
+                  "properties": { "type": "array", "items": { "type": "object" } },
+                  "source": { "$ref": "#/$defs/ElementSource" }
                 }
               }
             },
@@ -140,7 +144,10 @@
                       }
                     }
                   },
-                  "tenantScope": { "$ref": "#/$defs/TenantScope" }
+                  "tenantScope": { "$ref": "#/$defs/TenantScope" },
+                  "source": { "$ref": "#/$defs/ElementSource" },
+                  "tripleCandidate": { "type": "boolean" },
+                  "triple": { "$ref": "#/$defs/Triple" }
                 }
               }
             },
@@ -183,7 +190,15 @@
                         "unique": { "type": "boolean" }
                       }
                     }
-                  }
+                  },
+                  "vci": { "$ref": "#/$defs/Vci" },
+                  "vciCandidate": {
+                    "type": "boolean",
+                    "description": "True when a vertex-centric-index pattern (index-level and/or denormalization) was detected for this relationship (PRD §6.1/§6.2). The underlying style is preserved; this is an additive optimization hint."
+                  },
+                  "source": { "$ref": "#/$defs/ElementSource" },
+                  "tripleCandidate": { "type": "boolean" },
+                  "triple": { "$ref": "#/$defs/Triple" }
                 }
               }
             }
@@ -250,6 +265,53 @@
                 { "type": "null" },
                 { "type": "string", "enum": ["ok", "degraded"] }
               ]
+            },
+            "vci": {
+              "description": "Summary of vertex-centric-index detection (PRD §6.1/§6.2): the relationship types for which a VCI pattern was found. Per-relationship detail lives under physicalMapping.relationships[type].vci. Null when no VCI signals were found.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "relationships": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              ]
+            },
+            "rdfTopology": {
+              "description": "RDF-topology (RPT) classification (PRD §6.1/§6.2): whether the schema is stored as RDF triples / rdf:type edges (the TRIPLE mapping style). Triple/type collections are also annotated under physicalMapping with tripleCandidate=true. Null when the snapshot has no collections to classify.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "isRdfTopology": { "type": "boolean" },
+                    "tripleCollections": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                    "typeEdges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                    "evidence": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              ]
+            },
+            "qualityMetrics": {
+              "description": "Deterministic structural + grounding quality signals (PRD 3.12.3). Structural metrics are derived from the conceptual schema (connectivity, orphan ratio, property richness, dangling-relationship consistency); grounding metrics check the physical mapping against the snapshot (every referenced collection exists; every entity is mapped). Ratios are null when their denominator is zero.",
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "structural": { "type": "object", "additionalProperties": true },
+                "grounding": { "type": "object", "additionalProperties": true },
+                "healthScoreComponents": { "type": "object", "additionalProperties": { "type": "number" } }
+              }
+            },
+            "healthScore": {
+              "description": "Normalized 0-100 composite that folds confidence with the structural connectivity/consistency and mapping-grounding signals. Components that are not applicable for a given schema (e.g. connectivity for a relationship-free schema) are dropped and the remaining weights renormalized.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
             }
           }
         }
@@ -517,7 +579,114 @@
       "additionalProperties": false,
       "required": ["export"],
       "properties": {
-        "export": { "$ref": "#/$defs/AnalysisOutput" }
+        "export": {
+          "oneOf": [
+            { "$ref": "#/$defs/AnalysisOutput" },
+            { "$ref": "#/$defs/SparqlExport" }
+          ]
+        }
+      }
+    },
+
+    "Vci": {
+      "description": "Vertex-centric-index signals for a relationship (PRD §6.1/§6.2).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "indexLevel": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "accessPattern": { "type": "string", "enum": ["out-edge", "in-edge", "both"] },
+            "indexes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "root": { "type": "string", "enum": ["_from", "_to"] },
+                  "fields": { "type": "array", "items": { "type": "string" } },
+                  "discriminatorFields": { "type": "array", "items": { "type": "string" } },
+                  "unique": { "type": "boolean" },
+                  "sparse": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "denormalization": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "duplicatedFields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "field": { "type": "string" },
+                  "sourceCollections": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "Triple": {
+      "description": "TRIPLE mapping-style annotation (PRD §6.1/§6.2): this entity/relationship is stored in an RDF triple/quad collection rather than as a native property-graph collection.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "style": { "const": "TRIPLE" }
+      }
+    },
+
+    "ElementSource": {
+      "description": "Provenance tag (PRD 3.13.2) marking which producer emitted this element: 'llm' (generate/validate/repair loop), 'baseline' (deterministic inference, including reconciliation backfill on an LLM run), or 'human' (curated and preserved across re-analysis).",
+      "type": "string",
+      "enum": ["llm", "baseline", "human"]
+    },
+
+    "SparqlExport": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["target", "prefixes", "classes", "objectProperties"],
+      "properties": {
+        "target": { "const": "sparql" },
+        "prefixes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["iri", "localName", "label"],
+            "properties": {
+              "iri": { "type": "string" },
+              "localName": { "type": "string" },
+              "label": { "type": "string" },
+              "physical": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "objectProperties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["iri", "localName", "label"],
+            "properties": {
+              "iri": { "type": "string" },
+              "localName": { "type": "string" },
+              "label": { "type": "string" },
+              "domain": { "type": "string" },
+              "range": { "type": "string" },
+              "physical": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "physicalMapping": { "type": "object", "additionalProperties": true }
       }
     },
 
@@ -533,9 +702,57 @@
     "OwlResult": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["turtle"],
+      "oneOf": [
+        { "required": ["turtle"] },
+        { "required": ["jsonld"] }
+      ],
       "properties": {
-        "turtle": { "type": "string" }
+        "turtle": { "type": "string" },
+        "jsonld": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "JSON-LD serialization of the conceptual OWL model (classes, subClassOf hierarchy, object properties with domain/range, observed cardinality + functional/inverse-functional characteristics, owl:inverseOf, and phys: annotations)."
+        }
+      }
+    },
+
+    "DiffResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diff"],
+      "properties": {
+        "diff": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Structural diff between input.previousAnalysis and input.analysis (PRD §3.13.3): added/removed/changed entities & relationships, mapping-style flips, and the health-score delta.",
+          "required": ["changed", "entities", "relationships", "mappingStyles"],
+          "properties": {
+            "changed": { "type": "boolean" },
+            "entities": { "type": "object", "additionalProperties": true },
+            "relationships": { "type": "object", "additionalProperties": true },
+            "mappingStyles": { "type": "object", "additionalProperties": true },
+            "healthScore": { "type": "object", "additionalProperties": true },
+            "summary": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+
+    "ResolveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution"],
+      "properties": {
+        "resolution": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Flattened label/relationship-type → AQL lookup for a Cypher transpiler (build_cypher_resolution_index): per entity the injection-safe match fragment, per relationship the traversal fragment, or an error block for incomplete mappings.",
+          "properties": {
+            "target": { "const": "cypher" },
+            "entities": { "type": "object", "additionalProperties": true },
+            "relationships": { "type": "object", "additionalProperties": true }
+          }
+        }
       }
     }
   },

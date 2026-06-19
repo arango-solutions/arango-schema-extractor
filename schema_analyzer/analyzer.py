@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 if TYPE_CHECKING:
     from arango.database import StandardDatabase
 
-from .arango_products import detect_arango_products
 from .baseline import infer_baseline_from_snapshot
 from .cache import AnalysisCache, cache_from_config
 from .conceptual import ConceptualSchema
@@ -27,35 +26,31 @@ from .defaults import (
     MIN_LLM_BUDGET_MS,
 )
 from .domain_detect import DomainHint, detect_domain
+from .enrichment import (
+    _apply_collection_name_allowlist,
+    _apply_multitenancy,
+    _apply_rdf_topology,
+    _apply_reconciliation,
+    _apply_shard_families,
+    _apply_sharding_profile,
+    _apply_statistics,
+    _apply_tenant_scope,
+    _apply_vci,
+    _arango_product_dict_for,
+    _arango_product_status_for,
+)
 from .errors import SchemaAnalyzerError
 from .mapping import PhysicalMapping
-from .multitenancy import classify_multitenancy
+from .provenance import annotate_provenance
 from .providers import create_provider, get_default_model, get_provider_env_var
-from .reconcile import reconcile_physical_mapping, strip_unknown_collection_names
-from .shard_families import detect_shard_families
-from .sharding_profile import classify_sharding_profile
+from .quality import build_quality_block
+from .redaction import RedactionOptions, redact_snapshot_for_egress
 from .snapshot import fingerprint_physical_schema, snapshot_physical_schema
-from .statistics import (
-    STATISTICS_STATUS_SKIPPED_NO_DB,
-    compute_statistics,
-)
-from .tenant_scope import annotate_tenant_scope
 from .types import AnalysisMetadata, AnalysisResult, now_iso
 from .utils import analysis_cache_storage_key, stable_dumps
 from .workflow import async_generate_validate_repair, run_generate_validate_repair
 
 logger = logging.getLogger(__name__)
-
-
-def _arango_product_dict_for(snapshot: dict) -> dict | None:
-    """Return the arango_product metadata block for a snapshot."""
-    report = detect_arango_products(snapshot)
-    return report.to_dict() if not report.is_empty else None
-
-
-def _arango_product_status_for(snapshot: dict) -> str:
-    """'ok' when any product detected, 'none' otherwise."""
-    return "ok" if not detect_arango_products(snapshot).is_empty else "none"
 
 
 _PROVENANCE_CACHE_STRIP = (
@@ -179,204 +174,6 @@ def _compute_confidence(errors: list[str], warnings: list[str]) -> float:
     return max(CONFIDENCE_FLOOR, CONFIDENCE_BASE - penalty)
 
 
-def _apply_collection_name_allowlist(
-    data: dict[str, Any],
-    snapshot: dict[str, Any],
-    warnings: list[str],
-) -> None:
-    """
-    Strip any LLM-supplied ``collectionName`` / ``edgeCollectionName``
-    that does not name a real collection in ``snapshot``. Each strip
-    appends a warning so the caller can audit what was discarded.
-
-    Runs BEFORE :func:`_apply_reconciliation` so that stripped entries
-    become eligible for deterministic baseline backfill in the same pass.
-    """
-    msgs = strip_unknown_collection_names(data, snapshot)
-    if msgs:
-        warnings.extend(msgs)
-        for m in msgs:
-            logger.warning("Collection-name allowlist: %s", m)
-
-
-def _apply_reconciliation(
-    data: dict[str, Any],
-    snapshot: dict[str, Any],
-    warnings: list[str],
-) -> None:
-    """
-    Run post-LLM collection-coverage reconciliation and fold the summary
-    into ``data["metadata"]`` + the caller-owned warnings list.
-
-    No-op (no metadata mutation, no warning appended) when the LLM output
-    already covers every snapshot collection.
-    """
-    summary = reconcile_physical_mapping(data, snapshot)
-    if summary is None:
-        return
-
-    meta = data.setdefault("metadata", {})
-    if not isinstance(meta, dict):
-        meta = {}
-        data["metadata"] = meta
-    meta["reconciliation"] = summary
-
-    backfilled = summary.get("backfilled_collections") or []
-    warning_msg = (
-        f"LLM physical mapping omitted {len(backfilled)} "
-        f"snapshot collection{'s' if len(backfilled) != 1 else ''}; "
-        f"backfilled from baseline: {', '.join(backfilled)}"
-    )
-    warnings.append(warning_msg)
-    logger.info(
-        "Reconciliation: backfilled %d missing collection(s) from baseline: %s",
-        len(backfilled),
-        backfilled,
-    )
-
-
-def _apply_sharding_profile(
-    data: dict[str, Any],
-    snapshot: dict[str, Any],
-) -> None:
-    """Classify the snapshot by sharding pattern and stamp
-    ``metadata.shardingProfile`` + ``metadata.shardingProfileStatus``.
-
-    Always safe to call — a snapshot too minimal to classify (no
-    collections, pre-0.x snapshot without the ``database`` block, etc.)
-    results in a no-op; nothing is written. Matches the contract used
-    by :func:`_apply_reconciliation` and :func:`_apply_tenant_scope`
-    for features that don't apply to every graph.
-    """
-    profile = classify_sharding_profile(snapshot)
-    if profile is None:
-        return
-    meta = data.setdefault("metadata", {})
-    if not isinstance(meta, dict):
-        meta = {}
-        data["metadata"] = meta
-    meta["shardingProfile"] = profile
-    meta["shardingProfileStatus"] = profile.get("status")
-
-
-def _apply_shard_families(data: dict[str, Any]) -> None:
-    """Detect shard families across ``data["physicalMapping"]["entities"]``
-    and stamp ``data["physicalMapping"]["shardFamilies"]``.
-
-    Always safe to call. Writes nothing (preserves the prior physical
-    mapping byte-for-byte) when the input has no usable entity dict —
-    consumers can then distinguish "didn't run" from "ran, found
-    none" (the latter writes an explicit empty list).
-    """
-    families = detect_shard_families(data)
-    if families is None:
-        return
-    pm = data.get("physicalMapping")
-    if not isinstance(pm, dict):
-        return
-    pm["shardFamilies"] = families
-
-
-def _apply_multitenancy(
-    data: dict[str, Any],
-    snapshot: dict[str, Any],
-) -> None:
-    """Classify the snapshot by multitenancy pattern and stamp
-    ``metadata.multitenancy`` + ``metadata.multitenancyStatus``.
-
-    Must run *after* :func:`_apply_sharding_profile` so the
-    disjoint-smartgraph branch can consume the sharding profile.
-    Always safe to call; a no-op when the snapshot has no user
-    collections.
-    """
-    sharding = (data.get("metadata") or {}).get("shardingProfile")
-    block = classify_multitenancy(data, snapshot, sharding_profile=sharding)
-    if block is None:
-        return
-    meta = data.setdefault("metadata", {})
-    if not isinstance(meta, dict):
-        meta = {}
-        data["metadata"] = meta
-    meta["multitenancy"] = block
-    meta["multitenancyStatus"] = block.get("status")
-
-
-def _apply_tenant_scope(data: dict[str, Any]) -> None:
-    """Annotate ``physicalMapping.entities[*].tenantScope`` and stamp a
-    ``metadata.tenantScopeReport`` summary.
-
-    No-op (and no metadata block) when no tenant root is detected,
-    matching :func:`_apply_reconciliation`'s contract for graphs that
-    don't need the feature. Always safe to call after reconciliation.
-    """
-    summary = annotate_tenant_scope(data)
-    if summary is None:
-        return
-    meta = data.setdefault("metadata", {})
-    if not isinstance(meta, dict):
-        meta = {}
-        data["metadata"] = meta
-    meta["tenantScopeReport"] = summary
-    logger.info(
-        "Tenant scope: root=%s denorm=%d traversal=%d global=%d",
-        summary.get("tenantEntity"),
-        summary.get("denormScopedCount", 0),
-        summary.get("traversalScopedCount", 0),
-        summary.get("globalCount", 0),
-    )
-
-
-def _apply_statistics(
-    db: Any,
-    data: dict[str, Any],
-    snapshot: dict[str, Any],
-) -> None:
-    """
-    Run the per-relationship statistics pass (issue #3) and stamp its
-    output onto ``data["metadata"]``.
-
-    * When ``db`` is ``None`` or ``compute_statistics`` returns ``None``
-      we set ``metadata.statistics_status = "skipped_no_db"`` and leave
-      ``metadata.statistics`` absent — this is the documented snapshot-
-      only contract.
-    * Otherwise ``metadata.statistics`` carries the full block and
-      ``metadata.statistics_status`` mirrors the inner ``status`` field
-      so consumers can branch on a single top-level key.
-
-    AQL errors on individual collections are already absorbed inside
-    ``compute_statistics`` (they surface as ``status="partial"``); this
-    wrapper logs + swallows any other unexpected failure so statistics
-    never break the analysis as a whole.
-    """
-    meta = data.setdefault("metadata", {})
-    if not isinstance(meta, dict):
-        meta = {}
-        data["metadata"] = meta
-
-    if db is None:
-        meta["statistics_status"] = STATISTICS_STATUS_SKIPPED_NO_DB
-        return
-
-    try:
-        block = compute_statistics(
-            db,
-            snapshot,
-            data.get("physicalMapping") or {},
-            data.get("conceptualSchema"),
-        )
-    except Exception as exc:  # pragma: no cover — defensive
-        logger.warning("statistics computation failed: %s", exc)
-        meta["statistics_status"] = STATISTICS_STATUS_SKIPPED_NO_DB
-        return
-
-    if block is None:
-        meta["statistics_status"] = STATISTICS_STATUS_SKIPPED_NO_DB
-        return
-
-    meta["statistics"] = block
-    meta["statistics_status"] = block.get("status")
-
-
 def _api_key_from_env(provider: str) -> str | None:
     env_var = get_provider_env_var(provider)
     return os.environ.get(env_var) if env_var else None
@@ -414,6 +211,7 @@ class AgenticSchemaAnalyzer:
     system_prompt: str | None = None
     prompt_version: str | None = None
     max_repair_attempts: int | None = None
+    redaction: RedactionOptions | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.cache, dict) or self.cache is None:
@@ -510,7 +308,22 @@ class AgenticSchemaAnalyzer:
             _apply_sharding_profile(stats_holder, snapshot)
             _apply_shard_families(stats_holder)
             _apply_multitenancy(stats_holder, snapshot)
+            _apply_vci(stats_holder, snapshot)
+            _apply_rdf_topology(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
+            baseline_conceptual = ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json()
+            baseline_physical = PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json()
+            annotate_provenance(
+                {
+                    "conceptualSchema": baseline_conceptual,
+                    "physicalMapping": baseline_physical,
+                    "metadata": {},
+                },
+                used_baseline=True,
+            )
+            baseline_quality, baseline_health = build_quality_block(
+                baseline_conceptual, baseline_physical, snapshot, BASELINE_NO_LLM_CONFIDENCE
+            )
             meta = AnalysisMetadata(
                 confidence=BASELINE_NO_LLM_CONFIDENCE,
                 timestamp=now_iso(),
@@ -531,16 +344,20 @@ class AgenticSchemaAnalyzer:
                 sharding_profile_status=stats_holder["metadata"].get("shardingProfileStatus"),
                 multitenancy=stats_holder["metadata"].get("multitenancy"),
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
+                vci=stats_holder["metadata"].get("vci"),
+                rdf_topology=stats_holder["metadata"].get("rdfTopology"),
                 arango_product=_arango_product_dict_for(snapshot),
                 arango_product_status=_arango_product_status_for(snapshot),
+                quality_metrics=baseline_quality,
+                health_score=baseline_health,
             )
             meta = self._stamp_metadata(meta, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
             result = AnalysisResult(
-                conceptual_schema=ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json(),
-                physical_mapping=PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json(),
+                conceptual_schema=baseline_conceptual,
+                physical_mapping=baseline_physical,
                 metadata=meta,
             )
-            if use_cache and self.cache is not None:
+            if use_cache and isinstance(self.cache, AnalysisCache):
                 self.cache.set(
                     cache_storage_key,
                     _strip_provenance_for_cache(result.model_dump()),
@@ -549,13 +366,14 @@ class AgenticSchemaAnalyzer:
             return result
 
         logger.info("Using LLM provider=%s", self.llm_provider)
+        assert self.llm_provider is not None and api_key is not None  # guaranteed by use_llm
         provider = create_provider(self.llm_provider, api_key=api_key)
         model = self.model or get_default_model(self.llm_provider)
 
         elapsed_ms = int((time.time() - started) * 1000)
         remaining = max(MIN_LLM_BUDGET_MS, timeout_ms - elapsed_ms)
 
-        prompt = _build_prompt(snapshot, domain_hint=domain_hint)
+        prompt = _build_prompt(redact_snapshot_for_egress(snapshot, self.redaction), domain_hint=domain_hint)
 
         return _AnalysisContext(
             snapshot=snapshot,
@@ -626,6 +444,8 @@ class AgenticSchemaAnalyzer:
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
+        _apply_vci(data, prep.snapshot)
+        _apply_rdf_topology(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -700,6 +520,8 @@ class AgenticSchemaAnalyzer:
         _apply_sharding_profile(data, prep.snapshot)
         _apply_shard_families(data)
         _apply_multitenancy(data, prep.snapshot)
+        _apply_vci(data, prep.snapshot)
+        _apply_rdf_topology(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -747,6 +569,15 @@ class AgenticSchemaAnalyzer:
         confidence = max(0.0, min(1.0, confidence))
         review_required = confidence < self.review_threshold or bool(errors)
 
+        annotate_provenance(data, used_baseline=bool(errors))
+        conceptual_schema = ConceptualSchema.from_json(
+            data.get("conceptualSchema", {}) if isinstance(data.get("conceptualSchema"), dict) else {}
+        ).to_json()
+        physical_mapping = PhysicalMapping.from_json(
+            data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}
+        ).to_json()
+        quality_metrics, health_score = build_quality_block(conceptual_schema, physical_mapping, snapshot, confidence)
+
         metadata = AnalysisMetadata(
             confidence=confidence,
             timestamp=str(data.get("metadata", {}).get("timestamp") or now_iso()),
@@ -779,15 +610,20 @@ class AgenticSchemaAnalyzer:
             sharding_profile_status=data.get("metadata", {}).get("shardingProfileStatus")
             if isinstance(data.get("metadata"), dict)
             else None,
+            multitenancy=data.get("metadata", {}).get("multitenancy")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            multitenancy_status=data.get("metadata", {}).get("multitenancyStatus")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            vci=data.get("metadata", {}).get("vci") if isinstance(data.get("metadata"), dict) else None,
+            rdf_topology=data.get("metadata", {}).get("rdfTopology")
+            if isinstance(data.get("metadata"), dict)
+            else None,
+            quality_metrics=quality_metrics,
+            health_score=health_score,
         )
         metadata = self._stamp_metadata(metadata, prov=prov, physical_fingerprint=fingerprint, cache_hit=False)
-
-        conceptual_schema = ConceptualSchema.from_json(
-            data.get("conceptualSchema", {}) if isinstance(data.get("conceptualSchema"), dict) else {}
-        ).to_json()
-        physical_mapping = PhysicalMapping.from_json(
-            data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}
-        ).to_json()
 
         result = AnalysisResult(
             conceptual_schema=conceptual_schema,
@@ -795,7 +631,7 @@ class AgenticSchemaAnalyzer:
             metadata=metadata,
         )
 
-        if use_cache and self.cache is not None:
+        if use_cache and isinstance(self.cache, AnalysisCache):
             logger.debug("Caching result for cache key prefix %s", cache_storage_key[:16])
             self.cache.set(
                 cache_storage_key,

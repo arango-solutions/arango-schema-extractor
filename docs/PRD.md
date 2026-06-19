@@ -5,7 +5,7 @@
 **Package**: `arangodb-schema-analyzer` (PyPI)
 **Import**: `schema_analyzer`
 **Language**: Python ≥ 3.10
-**Version**: tracked in `pyproject.toml` (current: 0.6.0; see `CHANGELOG.md`)
+**Version**: tracked in `pyproject.toml` (current: 0.7.0; see `CHANGELOG.md`)
 
 **Companion codebase:** **Arango-OntoExtract (AOE)** is developed in the **`ontology_generator`** repository (underscore, not `ontology-generator`). A typical local layout is `~/code/ontology_generator` alongside this repo. Cross-references in this document mean that project.
 
@@ -389,10 +389,28 @@ adapter.
 > Items below were originally scoped post-0.1. Several have shipped since;
 > each shipped bullet is annotated with the release that introduced it.
 > Unannotated bullets remain future work.
+>
+> **Shipped in 0.7.0** (annotated inline below): VCI detection +
+> `vci`/`vciCandidate` mapping annotation (§6.1/§6.2); RDF-topology (RPT)
+> detection + `TRIPLE` mapping-style annotation (§6.1/§6.2); richer OWL —
+> `rdfs:subClassOf`, functional/inverse-functional characteristics, observed
+> cardinality, `owl:inverseOf`, and JSON-LD export (§6.3); SPARQL export target
+> and a Cypher resolution adapter (§6.4); `diff` and `resolve` v1 tool-contract
+> operations; element-level `source` provenance and `diff_analyses` (§3.13);
+> structural/grounding quality metrics + `healthScore` (§3.12.3); LLM-egress
+> redaction (§4.3). Still future: SPARQL/SQL *query generation*, MCP SSE/remote
+> transport (§3.11), and confidence calibration from eval feedback (§6.5).
 
 #### **6.1. Additional Mapping Styles**
-- `TRIPLE` — for RDF-style schemas with `_triples` collections and `rdf:type` edges
-- `VCI` — for Vertex-Centric Index optimization patterns (denormalized properties on edges)
+- `TRIPLE` — _Shipped in 0.7.0_ as an additive annotation
+  (`physicalMapping[*].triple = {"style":"TRIPLE"}` + `tripleCandidate`) driven
+  by RPT detection (`schema_analyzer/rdf_topology.py`); the native style is
+  preserved alongside. For RDF-style schemas with `_triples` collections and
+  `rdf:type` edges.
+- `VCI` — _Shipped in 0.7.0_ as an additive annotation
+  (`physicalMapping.relationships[*].vci` + `vciCandidate`,
+  `schema_analyzer/vci.py`). For Vertex-Centric Index optimization patterns
+  (denormalized properties on edges).
 
 #### **6.2. Enhanced Pattern Detection**
 - RPT (RDF Topology) detection: `_triples` collections, `rdf:type` edges
