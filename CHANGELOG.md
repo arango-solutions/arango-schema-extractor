@@ -2,7 +2,33 @@
 
 ## Unreleased
 
-(no changes)
+### Confidence calibration from eval feedback (PRD §3.12.3 / §6.5)
+
+- New `schema_analyzer/eval/calibration.py` pairs each eval run's
+  self-reported `metadata.confidence` with its realized quality (mean of
+  entity / relationship / domain-range F1 and mapping-style accuracy) to
+  measure whether confidence is calibrated and where the review gate should
+  sit. Pure and DB-free — operates on report-entry dicts, so it runs on live
+  results or a saved report and is unit-tested without ArangoDB.
+  - `compute_calibration(entries)` returns a reliability curve (per-bin
+    predicted-confidence vs observed-quality), **ECE** / **MCE** / **Brier**
+    summaries, an overconfidence `gap` (mean confidence − mean quality), and a
+    `recommended_review_threshold` derived by maximizing Youden's J of the
+    `review_required = confidence < threshold` gate against a binary
+    "good run" label (`observed quality ≥ quality_target`). Inputs, formula,
+    and failure modes (empty input, all-good / all-bad non-discriminative
+    cases) are documented per the §3.12.3 requirement.
+  - `format_calibration_report(cal)` renders a human-readable table; the
+    `eval` CLI now prints calibration after the score table.
+  - **Eval report shape:** `save_eval_report` now writes
+    `{"runs": [...], "calibration": {...}}` instead of a bare list.
+    `compare_reports` reads both shapes (legacy list baselines still diff) and
+    appends a calibration-drift section (gap / ECE / Brier / recommended
+    threshold, baseline vs current) so drift is visible release-over-release.
+  - New exports from `schema_analyzer.eval`: `compute_calibration`,
+    `format_calibration_report`, `observed_quality`, `calibration_from_results`.
+  - New tunables in `defaults.py`: `DEFAULT_CALIBRATION_BINS` (10),
+    `DEFAULT_CALIBRATION_QUALITY_TARGET` (0.7).
 
 ## 0.7.0
 
