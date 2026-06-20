@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+(no changes)
+
+## 0.8.0
+
 ### Transpiler export contract (PRD §6.4, adapter integration)
 
 - **SPARQL export now emits `datatypeProperties`.** `export_mapping(target="sparql")`
