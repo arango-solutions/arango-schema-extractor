@@ -28,12 +28,25 @@ python -m pip install -e ".[openrouter]"
 
 OpenRouter actually requires no extra SDK (uses stdlib `urllib`); the `[openrouter]` extra exists as a documentation marker only and pulls in nothing.
 
-**MCP (Model Context Protocol)** — optional stdio server wrapping the v1 JSON tool contract:
+**MCP (Model Context Protocol)** — optional server wrapping the v1 JSON tool contract:
 
 ```bash
 python -m pip install -e ".[mcp]"
-arangodb-schema-analyzer-mcp
+arangodb-schema-analyzer-mcp                                   # stdio (local IDE)
+arangodb-schema-analyzer-mcp --transport sse --host 0.0.0.0 --port 8000        # remote
+arangodb-schema-analyzer-mcp --transport streamable-http --port 8000           # remote
 ```
+
+Exposes both generic tools (`arangodb_schema_analyzer_run` / `_run_json`) and
+typed per-operation tools (`schema_analyzer_snapshot|analyze|export|docs|owl`).
+
+**Remote transports are security-gated.** Set `SCHEMA_ANALYZER_MCP_TOKEN` and
+every HTTP request must send `Authorization: Bearer <token>` (constant-time
+checked; missing/invalid → `401 UNAUTHENTICATED`). If unset, the server still
+starts but logs a loud warning — never expose an unauthenticated remote server.
+The `run_tool` trust boundary (`SCHEMA_ANALYZER_ALLOWED_HOSTS` /
+`SCHEMA_ANALYZER_CACHE_ROOT`) is enforced for every transport. Flags fall back
+to `SCHEMA_ANALYZER_MCP_TRANSPORT` / `_HOST` / `_PORT`.
 
 **Development extras** (pytest, ruff, mypy, etc.):
 
@@ -161,7 +174,13 @@ Exports (see `schema_analyzer/__init__.py`):
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
 
-- **Unreleased** — `metadata.qualityMetrics` + `metadata.healthScore`
+- **Unreleased** — **confidence calibration from eval feedback**
+  (`schema_analyzer/eval/calibration.py`): pairs `metadata.confidence` with
+  realized eval quality to emit a reliability curve, ECE/MCE/Brier, an
+  overconfidence gap, and a `recommended_review_threshold`. Surfaced in the
+  `eval` CLI and the report comparison (drift section); eval reports are now
+  `{"runs", "calibration"}` (legacy list baselines still diff).
+- **0.7.0** — `metadata.qualityMetrics` + `metadata.healthScore`
   (structural/grounding signals + 0–100 composite), element-level `source`
   provenance (`llm`/`baseline`/`human`), `diff_analyses()`, a **SPARQL** export
   target, a Cypher resolution adapter, and `analysisOptions.redaction`

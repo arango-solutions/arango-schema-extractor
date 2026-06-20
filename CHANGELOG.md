@@ -19,6 +19,52 @@
   object property resolution. Documents that this library produces the *map*;
   query translation stays in the transpiler (e.g. `arango-cypher`).
 
+### MCP remote transports + auth (PRD §3.11)
+
+- The MCP server (`schema_analyzer/mcp_server.py`) now serves **sse** and
+  **streamable-http** in addition to **stdio**, selectable via
+  `--transport / --host / --port` (env fallbacks
+  `SCHEMA_ANALYZER_MCP_TRANSPORT / _HOST / _PORT`). stdio remains the default,
+  so existing invocations are unchanged.
+- **Bearer-token auth for remote transports.** Set `SCHEMA_ANALYZER_MCP_TOKEN`
+  and every HTTP request must carry `Authorization: Bearer <token>`
+  (constant-time compared; missing/invalid → `401 UNAUTHENTICATED`). When
+  unset, the server starts but logs a loud warning. The existing `run_tool`
+  trust boundary (`SCHEMA_ANALYZER_ALLOWED_HOSTS` / `SCHEMA_ANALYZER_CACHE_ROOT`)
+  is enforced for every transport.
+- **Typed per-operation tools.** Alongside the generic `arangodb_schema_analyzer_run`
+  / `_run_json`, the server now registers
+  `schema_analyzer_snapshot | analyze | export | docs | owl` matching the §3.11
+  surface, so MCP clients get typed parameters instead of one opaque request dict.
+
+### Confidence calibration from eval feedback (PRD §3.12.3 / §6.5)
+
+- New `schema_analyzer/eval/calibration.py` pairs each eval run's
+  self-reported `metadata.confidence` with its realized quality (mean of
+  entity / relationship / domain-range F1 and mapping-style accuracy) to
+  measure whether confidence is calibrated and where the review gate should
+  sit. Pure and DB-free — operates on report-entry dicts, so it runs on live
+  results or a saved report and is unit-tested without ArangoDB.
+  - `compute_calibration(entries)` returns a reliability curve (per-bin
+    predicted-confidence vs observed-quality), **ECE** / **MCE** / **Brier**
+    summaries, an overconfidence `gap` (mean confidence − mean quality), and a
+    `recommended_review_threshold` derived by maximizing Youden's J of the
+    `review_required = confidence < threshold` gate against a binary
+    "good run" label (`observed quality ≥ quality_target`). Inputs, formula,
+    and failure modes (empty input, all-good / all-bad non-discriminative
+    cases) are documented per the §3.12.3 requirement.
+  - `format_calibration_report(cal)` renders a human-readable table; the
+    `eval` CLI now prints calibration after the score table.
+  - **Eval report shape:** `save_eval_report` now writes
+    `{"runs": [...], "calibration": {...}}` instead of a bare list.
+    `compare_reports` reads both shapes (legacy list baselines still diff) and
+    appends a calibration-drift section (gap / ECE / Brier / recommended
+    threshold, baseline vs current) so drift is visible release-over-release.
+  - New exports from `schema_analyzer.eval`: `compute_calibration`,
+    `format_calibration_report`, `observed_quality`, `calibration_from_results`.
+  - New tunables in `defaults.py`: `DEFAULT_CALIBRATION_BINS` (10),
+    `DEFAULT_CALIBRATION_QUALITY_TARGET` (0.7).
+
 ## 0.7.0
 
 ### Internal refactor (no behavior change)
