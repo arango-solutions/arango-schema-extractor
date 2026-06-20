@@ -174,12 +174,15 @@ Exports (see `schema_analyzer/__init__.py`):
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
 
-- **Unreleased** — **confidence calibration from eval feedback**
-  (`schema_analyzer/eval/calibration.py`): pairs `metadata.confidence` with
-  realized eval quality to emit a reliability curve, ECE/MCE/Brier, an
-  overconfidence gap, and a `recommended_review_threshold`. Surfaced in the
-  `eval` CLI and the report comparison (drift section); eval reports are now
-  `{"runs", "calibration"}` (legacy list baselines still diff).
+- **0.8.0** — **confidence calibration from eval feedback**
+  (`schema_analyzer/eval/calibration.py`): reliability curve, ECE/MCE/Brier, an
+  overconfidence gap, and a `recommended_review_threshold`, surfaced in the
+  `eval` CLI and report-comparison drift section (eval reports are now
+  `{"runs", "calibration"}`; legacy list baselines still diff). Plus **MCP
+  remote transports** (sse / streamable-http with bearer-token auth, §3.11) and
+  a hardened **transpiler export contract** — SPARQL `datatypeProperties` for
+  literal triple patterns, and `docs/transpiler-integration.md` for transpiler
+  authors (§6.4).
 - **0.7.0** — `metadata.qualityMetrics` + `metadata.healthScore`
   (structural/grounding signals + 0–100 composite), element-level `source`
   provenance (`llm`/`baseline`/`human`), `diff_analyses()`, a **SPARQL** export
