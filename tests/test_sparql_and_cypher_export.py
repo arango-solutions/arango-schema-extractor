@@ -69,6 +69,47 @@ def test_sparql_export_classes_and_properties():
     assert props["LIKED"]["physical"]["typeField"] == "relType"
 
 
+def test_sparql_export_datatype_properties():
+    out = export_mapping(ANALYSIS, target="sparql")
+    dps = out["datatypeProperties"]
+    # User has one literal attribute (email); Post has none.
+    assert len(dps) == 1
+    email = dps[0]
+    assert email["label"] == "email"
+    assert email["attribute"] == "email"
+    assert email["domain"].endswith("User")
+    assert email["iri"].endswith("email")
+    # carries the owning entity's physical resolution
+    assert email["physical"]["collectionName"] == "users"
+
+
+def test_sparql_export_datatype_properties_repeat_across_entities():
+    analysis = {
+        "conceptualSchema": {
+            "entities": [
+                {"name": "User", "properties": [{"name": "name"}]},
+                {"name": "Org", "properties": [{"name": "name"}]},
+            ],
+            "relationships": [],
+            "properties": [],
+        },
+        "physicalMapping": {
+            "entities": {
+                "User": {"style": "COLLECTION", "collectionName": "users"},
+                "Org": {"style": "COLLECTION", "collectionName": "orgs"},
+            },
+            "relationships": {},
+        },
+    }
+    out = export_mapping(analysis, target="sparql")
+    by_domain = {d["domain"].rsplit("/", 1)[-1].rsplit("#", 1)[-1]: d for d in out["datatypeProperties"]}
+    # same predicate IRI reused, but one entry per owning class (distinct domains)
+    assert set(by_domain) == {"User", "Org"}
+    assert by_domain["User"]["iri"] == by_domain["Org"]["iri"]
+    assert by_domain["User"]["physical"]["collectionName"] == "users"
+    assert by_domain["Org"]["physical"]["collectionName"] == "orgs"
+
+
 def test_sparql_export_validates_against_response_contract():
     out = export_mapping(ANALYSIS, target="sparql")
     schema_path = (

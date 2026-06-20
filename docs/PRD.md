@@ -560,9 +560,23 @@ adapter.
 - Integration with OWL reasoners for consistency checking
 
 #### **6.4. Transpiler Integration**
-- Direct integration with `arango-cypher` to consume mapping output
-- SPARQL query generation from OWL conceptual schema
-- SQL mapping for relational query translation
+
+**Direction (decided): adapter, not query engine.** This library produces a
+stable **mapping contract** that external transpilers consume to generate AQL;
+it does not host a query parser/translator. See
+`docs/transpiler-integration.md` for the author-facing contract.
+
+- Direct integration with `arango-cypher` to consume mapping output — supported
+  via `build_cypher_resolution_index` (the `resolve` op) and the raw `cypher`
+  export.
+- **SPARQL mapping contract** — _Shipped / hardened post-0.7.0._ The `sparql`
+  export emits classes, object properties (with domains/ranges), and
+  **datatype properties** for entity literal attributes, each annotated with the
+  physical resolution, so a SPARQL→AQL transpiler can resolve type, relationship,
+  **and literal** triple patterns. SPARQL→AQL *query translation itself* remains
+  out of scope for this library (lives in the consuming transpiler).
+- SQL mapping for relational query translation — future; would add a `sql`
+  export target (relational view) on the same adapter principle.
 
 #### **6.5. Advanced Features**
 - **Schema evolution and lineage** — See §3.13 (run records, fingerprint linkage, diff between analyses, stale detection). Optional alignment with AOE temporal imports when analyses are promoted into `ontology_generator`.

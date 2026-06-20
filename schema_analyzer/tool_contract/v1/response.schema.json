@@ -686,6 +686,22 @@
             }
           }
         },
+        "datatypeProperties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["iri", "localName", "label"],
+            "properties": {
+              "iri": { "type": "string" },
+              "localName": { "type": "string" },
+              "label": { "type": "string" },
+              "domain": { "type": "string" },
+              "attribute": { "type": "string" },
+              "physical": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
         "physicalMapping": { "type": "object", "additionalProperties": true }
       }
     },

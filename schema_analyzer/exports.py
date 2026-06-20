@@ -35,10 +35,11 @@ def export_mapping(analysis: AnalysisResult | dict[str, Any], target: str = "cyp
       metadata}`` bundle that the Cypher transpiler consumes directly. See
       :func:`build_cypher_resolution_index` for a flattened label/rel-type → AQL
       lookup built on top of this.
-    * ``"sparql"`` — an RDF vocabulary view (classes, object/datatype
-      properties with IRIs, domains, ranges) annotated with the physical
-      mapping so a SPARQL→AQL transpiler can resolve triple patterns to
-      collections and edge traversals.
+    * ``"sparql"`` — an RDF vocabulary view (classes, object properties with
+      IRIs/domains/ranges, and datatype properties for entity literal
+      attributes) annotated with the physical mapping so a SPARQL→AQL
+      transpiler can resolve triple patterns to collections, edge traversals,
+      and document-field accesses. See ``docs/transpiler-integration.md``.
     """
     if target not in SUPPORTED_EXPORT_TARGETS:
         raise ValueError(f"Unsupported export target: {target}")
@@ -87,6 +88,37 @@ def _export_sparql(
             }
         )
 
+    # Datatype properties: literal attributes on each entity, so a SPARQL→AQL
+    # transpiler can resolve literal-valued triple patterns (e.g. ?u :email ?e)
+    # to a document-field access on the entity's collection. One entry per
+    # (entity, attribute); the same attribute on two entities yields two entries
+    # with distinct domains (the RDF "property reused across classes" case).
+    datatype_properties: list[dict[str, Any]] = []
+    for e in entities:
+        if not isinstance(e, dict) or not isinstance(e.get("name"), str) or not e["name"]:
+            continue
+        name = e["name"]
+        domain_iri = f"{base_iri}{_sanitize_iri_local(name)}"
+        phys = _physical_block(pm_entities.get(name), _ENTITY_RESOLUTION_KEYS)
+        props = e.get("properties")
+        for prop in props if isinstance(props, list) else []:
+            attr = prop.get("name") if isinstance(prop, dict) else None
+            if not isinstance(attr, str) or not attr:
+                continue
+            local = _sanitize_iri_local(attr)
+            datatype_properties.append(
+                {
+                    "iri": f"{base_iri}{local}",
+                    "localName": local,
+                    "label": attr,
+                    "domain": domain_iri,
+                    # The physical document field the literal lives in, plus the
+                    # owning entity's collection resolution.
+                    "attribute": attr,
+                    "physical": phys,
+                }
+            )
+
     object_properties: list[dict[str, Any]] = []
     for r in rels:
         if not isinstance(r, dict) or not isinstance(r.get("type"), str) or not r["type"]:
@@ -119,6 +151,7 @@ def _export_sparql(
         },
         "classes": classes,
         "objectProperties": object_properties,
+        "datatypeProperties": datatype_properties,
         "physicalMapping": pm,
     }
 
