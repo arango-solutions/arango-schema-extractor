@@ -403,10 +403,11 @@ adapter.
 > and a Cypher resolution adapter (§6.4); `diff` and `resolve` v1 tool-contract
 > operations; element-level `source` provenance and `diff_analyses` (§3.13);
 > structural/grounding quality metrics + `healthScore` (§3.12.3); LLM-egress
-> redaction (§4.3). Shipped post-0.7.0 (see CHANGELOG "Unreleased"): MCP SSE /
-> streamable-http remote transport with bearer-token auth (§3.11) and confidence
-> calibration from eval feedback (§6.5). Still future: SPARQL/SQL *query
-> generation* (§6.4).
+> redaction (§4.3). **Shipped in 0.8.0**: MCP SSE / streamable-http remote
+> transport with bearer-token auth (§3.11); confidence calibration from eval
+> feedback (§6.5); SPARQL `datatypeProperties` export (§6.4). Still future:
+> SPARQL/SQL *query generation* (§6.4), GraphRAG template detection (§6.2), and
+> OWL reasoner integration (§6.3).
 
 #### **6.1. Additional Mapping Styles**
 - `TRIPLE` — _Shipped in 0.7.0_ as an additive annotation
@@ -576,7 +577,7 @@ it does not host a query parser/translator. See
 - Direct integration with `arango-cypher` to consume mapping output — supported
   via `build_cypher_resolution_index` (the `resolve` op) and the raw `cypher`
   export.
-- **SPARQL mapping contract** — _Shipped / hardened post-0.7.0._ The `sparql`
+- **SPARQL mapping contract** — _Shipped / hardened in 0.8.0._ The `sparql`
   export emits classes, object properties (with domains/ranges), and
   **datatype properties** for entity literal attributes, each annotated with the
   physical resolution, so a SPARQL→AQL transpiler can resolve type, relationship,
@@ -588,8 +589,8 @@ it does not host a query parser/translator. See
 #### **6.5. Advanced Features**
 - **Schema evolution and lineage** — See §3.13 (run records, fingerprint linkage, diff between analyses, stale detection). Optional alignment with AOE temporal imports when analyses are promoted into `ontology_generator`.
 - **Quality metrics expansion** — See §3.12.3 (structural ontology metrics, optional gold recall, health score, metric history).
-- **Confidence calibration from eval feedback loops.** _Shipped post-0.7.0_
-  (see CHANGELOG "Unreleased"). `schema_analyzer/eval/calibration.py` pairs
+- **Confidence calibration from eval feedback loops.** _Shipped in 0.8.0._
+  `schema_analyzer/eval/calibration.py` pairs
   `metadata.confidence` with realized eval quality to emit a reliability curve,
   ECE / MCE / Brier, an overconfidence gap, and a
   `recommended_review_threshold` (Youden's J on the review gate). Surfaced via
