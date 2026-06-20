@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### MCP remote transports + auth (PRD §3.11)
+
+- The MCP server (`schema_analyzer/mcp_server.py`) now serves **sse** and
+  **streamable-http** in addition to **stdio**, selectable via
+  `--transport / --host / --port` (env fallbacks
+  `SCHEMA_ANALYZER_MCP_TRANSPORT / _HOST / _PORT`). stdio remains the default,
+  so existing invocations are unchanged.
+- **Bearer-token auth for remote transports.** Set `SCHEMA_ANALYZER_MCP_TOKEN`
+  and every HTTP request must carry `Authorization: Bearer <token>`
+  (constant-time compared; missing/invalid → `401 UNAUTHENTICATED`). When
+  unset, the server starts but logs a loud warning. The existing `run_tool`
+  trust boundary (`SCHEMA_ANALYZER_ALLOWED_HOSTS` / `SCHEMA_ANALYZER_CACHE_ROOT`)
+  is enforced for every transport.
+- **Typed per-operation tools.** Alongside the generic `arangodb_schema_analyzer_run`
+  / `_run_json`, the server now registers
+  `schema_analyzer_snapshot | analyze | export | docs | owl` matching the §3.11
+  surface, so MCP clients get typed parameters instead of one opaque request dict.
+
 ### Confidence calibration from eval feedback (PRD §3.12.3 / §6.5)
 
 - New `schema_analyzer/eval/calibration.py` pairs each eval run's

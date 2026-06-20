@@ -179,10 +179,15 @@ The system includes a domain-based evaluation framework:
 - **Secrets:** Prefer env-indirection (`passwordEnvVar`, `apiKeyEnvVar`) in tool parameters; document that inline secrets in MCP payloads inherit the same risks as inline JSON secrets (logs, transcripts).
 - **Errors:** Surface contract-shaped errors (`ok: false`, typed `code`) to the client.
 - **Transports:** Support at least **stdio** for local IDE use; **SSE** (or equivalent) optional for remote agents.
-- **Implementation status:** **Shipped.** A stdio MCP server lives in
-  `schema_analyzer/mcp_server.py` and is exposed via the
-  `arangodb-schema-analyzer-mcp` console script (gated by the optional
-  `[mcp]` extra). SSE / remote transports remain future work.
+- **Implementation status:** **Shipped, incl. remote transports.** The MCP
+  server lives in `schema_analyzer/mcp_server.py` (`arangodb-schema-analyzer-mcp`
+  console script, `[mcp]` extra). It serves **stdio** (default), **sse**, and
+  **streamable-http** (`--transport`, `--host`, `--port`, with
+  `SCHEMA_ANALYZER_MCP_TRANSPORT/HOST/PORT` env fallbacks) and exposes both the
+  generic `run`/`run_json` tools and the five typed per-operation tools above.
+  Remote transports are gated by a bearer token (`SCHEMA_ANALYZER_MCP_TOKEN`;
+  missing/invalid → `401 UNAUTHENTICATED`, constant-time compared) and inherit
+  the `run_tool` allowlist/cache-root trust boundary uniformly.
 
 **Reference:** AOE documents a full MCP surface for ontology library and extraction (`ontology_generator` PRD §6.10); this project scopes MCP to **schema reverse-engineering and mapping** only.
 
@@ -398,9 +403,10 @@ adapter.
 > and a Cypher resolution adapter (§6.4); `diff` and `resolve` v1 tool-contract
 > operations; element-level `source` provenance and `diff_analyses` (§3.13);
 > structural/grounding quality metrics + `healthScore` (§3.12.3); LLM-egress
-> redaction (§4.3). Still future: SPARQL/SQL *query generation*, MCP SSE/remote
-> transport (§3.11). Confidence calibration from eval feedback (§6.5) shipped
-> post-0.7.0 (see CHANGELOG "Unreleased").
+> redaction (§4.3). Shipped post-0.7.0 (see CHANGELOG "Unreleased"): MCP SSE /
+> streamable-http remote transport with bearer-token auth (§3.11) and confidence
+> calibration from eval feedback (§6.5). Still future: SPARQL/SQL *query
+> generation* (§6.4).
 
 #### **6.1. Additional Mapping Styles**
 - `TRIPLE` — _Shipped in 0.7.0_ as an additive annotation
