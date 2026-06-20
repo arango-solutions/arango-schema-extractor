@@ -399,7 +399,8 @@ adapter.
 > operations; element-level `source` provenance and `diff_analyses` (§3.13);
 > structural/grounding quality metrics + `healthScore` (§3.12.3); LLM-egress
 > redaction (§4.3). Still future: SPARQL/SQL *query generation*, MCP SSE/remote
-> transport (§3.11), and confidence calibration from eval feedback (§6.5).
+> transport (§3.11). Confidence calibration from eval feedback (§6.5) shipped
+> post-0.7.0 (see CHANGELOG "Unreleased").
 
 #### **6.1. Additional Mapping Styles**
 - `TRIPLE` — _Shipped in 0.7.0_ as an additive annotation
@@ -567,7 +568,13 @@ adapter.
 #### **6.5. Advanced Features**
 - **Schema evolution and lineage** — See §3.13 (run records, fingerprint linkage, diff between analyses, stale detection). Optional alignment with AOE temporal imports when analyses are promoted into `ontology_generator`.
 - **Quality metrics expansion** — See §3.12.3 (structural ontology metrics, optional gold recall, health score, metric history).
-- Confidence calibration from eval feedback loops
+- **Confidence calibration from eval feedback loops.** _Shipped post-0.7.0_
+  (see CHANGELOG "Unreleased"). `schema_analyzer/eval/calibration.py` pairs
+  `metadata.confidence` with realized eval quality to emit a reliability curve,
+  ECE / MCE / Brier, an overconfidence gap, and a
+  `recommended_review_threshold` (Youden's J on the review gate). Surfaced via
+  the `eval` CLI and `compare_reports` drift section; deterministic and
+  DB-free so it runs on any saved eval report.
 - Streaming/incremental analysis for large databases
 - Custom provider SDK support beyond OpenAI/Anthropic/OpenRouter
 - ~~**MCP packaging** — Standalone MCP server or module as in §3.11~~ _Shipped in 0.4.0_ as the `arangodb-schema-analyzer-mcp` stdio server (`[mcp]` extra; see §3.11).

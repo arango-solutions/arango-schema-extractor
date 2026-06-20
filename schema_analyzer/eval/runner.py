@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..analyzer import AgenticSchemaAnalyzer
 from ..defaults import DEFAULT_EVAL_SAMPLE_LIMIT, DEFAULT_EVAL_SCALE, DEFAULT_TIMEOUT_MS
+from .calibration import compute_calibration
 from .domain_loader import list_domains, load_domain_spec
 from .generator import PhysicalVariant, materialize_domain_variant
 from .scoring import score_against_domain, score_domain_range, score_mapping_style
@@ -118,29 +119,48 @@ def format_eval_table(results: list[EvalRunResult]) -> str:
     return "\n".join(lines)
 
 
+def _result_to_entry(r: EvalRunResult) -> dict[str, Any]:
+    return {
+        "domain": r.domain,
+        "variant": r.variant,
+        "provider": r.provider,
+        "model": r.model,
+        "confidence": r.confidence,
+        "review_required": r.review_required,
+        "score": r.score,
+        "domain_range": r.domain_range,
+        "mapping_style": r.mapping_style,
+    }
+
+
+def calibration_from_results(results: list[EvalRunResult]) -> dict[str, Any]:
+    """Confidence-calibration summary for a list of eval results (see calibration.py)."""
+    return compute_calibration([_result_to_entry(r) for r in results])
+
+
+def _report_runs(report: Any) -> list[dict[str, Any]]:
+    """Extract run entries from a report, tolerant of both shapes.
+
+    Reports are now ``{"runs": [...], "calibration": {...}}``; older reports
+    were a bare ``[...]`` list. Both are accepted so existing baselines diff.
+    """
+    if isinstance(report, dict):
+        runs = report.get("runs")
+        return runs if isinstance(runs, list) else []
+    return report if isinstance(report, list) else []
+
+
 def save_eval_report(results: list[EvalRunResult], path: str | Path) -> None:
-    """Save eval results as a JSON report."""
-    data = [
-        {
-            "domain": r.domain,
-            "variant": r.variant,
-            "provider": r.provider,
-            "model": r.model,
-            "confidence": r.confidence,
-            "review_required": r.review_required,
-            "score": r.score,
-            "domain_range": r.domain_range,
-            "mapping_style": r.mapping_style,
-        }
-        for r in results
-    ]
+    """Save eval results as a JSON report with a calibration summary."""
+    runs = [_result_to_entry(r) for r in results]
+    data = {"runs": runs, "calibration": compute_calibration(runs)}
     Path(path).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", "utf-8")
 
 
 def compare_reports(current: str | Path, baseline: str | Path) -> str:
     """Compare two JSON eval reports and return a diff summary."""
-    cur = json.loads(Path(current).read_text("utf-8"))
-    base = json.loads(Path(baseline).read_text("utf-8"))
+    cur = _report_runs(json.loads(Path(current).read_text("utf-8")))
+    base = _report_runs(json.loads(Path(baseline).read_text("utf-8")))
 
     base_index: dict[str, dict[str, Any]] = {}
     for entry in base:
@@ -177,5 +197,20 @@ def compare_reports(current: str | Path, baseline: str | Path) -> str:
                 f"{name:>10} {base_val:9.3f} "
                 f"{cur_val:9.3f} {marker}{abs(delta):7.3f}"
             )
+
+    # Calibration drift (advisory): recompute over each report's runs so the
+    # signal is visible release-over-release even against legacy list reports.
+    cur_cal = compute_calibration(cur)
+    base_cal = compute_calibration(base)
+    if cur_cal["status"] == "ok" and base_cal["status"] == "ok":
+        lines.append("")
+        lines.append(f"{'Calibration':28} {'':22} {'Metric':>10} {'Baseline':>9} {'Current':>9} {'Delta':>8}")
+        lines.append("-" * 90)
+        for name in ("gap", "ece", "brier", "recommended_review_threshold"):
+            base_val = base_cal[name]
+            cur_val = cur_cal[name]
+            delta = cur_val - base_val
+            marker = "+" if delta > 0.005 else ("-" if delta < -0.005 else " ")
+            lines.append(f"{'':28} {'':22} {name:>10} {base_val:9.3f} {cur_val:9.3f} {marker}{abs(delta):7.3f}")
 
     return "\n".join(lines)
