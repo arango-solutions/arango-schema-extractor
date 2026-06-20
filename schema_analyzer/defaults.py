@@ -157,6 +157,13 @@ DEFAULT_EVAL_SCALE: int = 5
 DEFAULT_EVAL_SEED: int = 1
 EVAL_DELTA_THRESHOLD: float = 0.005
 
+# Confidence calibration (eval feedback → reviewThreshold; PRD §3.12.3 / §6.5)
+# Number of equal-width bins over [0, 1] for the reliability curve.
+DEFAULT_CALIBRATION_BINS: int = 10
+# A run is treated as "good" (the binary target for threshold selection) when
+# its composite observed quality is at least this value.
+DEFAULT_CALIBRATION_QUALITY_TARGET: float = 0.7
+
 # Provider / network
 OPENROUTER_ERROR_BODY_MAX_CHARS: int = 2000
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"

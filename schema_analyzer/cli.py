@@ -132,7 +132,14 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     from arango import ArangoClient
 
     from .analyzer import AgenticSchemaAnalyzer
-    from .eval import compare_reports, format_eval_table, run_eval, save_eval_report
+    from .eval import (
+        calibration_from_results,
+        compare_reports,
+        format_calibration_report,
+        format_eval_table,
+        run_eval,
+        save_eval_report,
+    )
 
     url = args.url or os.environ.get("ARANGO_URL", os.environ.get("ARANGO_HOST", DEFAULT_ARANGO_URL))
     user = args.user or os.environ.get("ARANGO_USER", DEFAULT_ARANGO_USER)
@@ -168,6 +175,9 @@ def _cmd_eval(args: argparse.Namespace) -> int:
                 sys_db.delete_database(db_name, ignore_missing=True)
 
     print(format_eval_table(results))
+
+    print("\n--- Confidence calibration ---")
+    print(format_calibration_report(calibration_from_results(results)))
 
     if args.report:
         save_eval_report(results, args.report)

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git tag *)",
+      "Bash(gh run *)",
+      "Bash(curl -s https://pypi.org/pypi/arangodb-schema-analyzer/json)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('latest on PyPI:', d['info']['version']\\); print\\('0.7.0 files:', [f['filename'] for f in d['releases'].get\\('0.7.0',[]\\)]\\)\")",
+      "Bash(awk '/^## 0\\\\.7\\\\.0/{f=1} f&&/^## 0\\\\.6\\\\.1/{exit} f{print}' CHANGELOG.md)",
+      "Bash(gh release *)"
+    ]
+  }
+}
