@@ -206,6 +206,46 @@ RDF_TYPE_PREDICATE_VALUES: frozenset[str] = frozenset(
     {"rdf:type", "type", "a", "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"}
 )
 
+# GraphRAG template detection (PRD §6.2)
+# Generic (brand-agnostic) recognition of a retrieval-augmented-generation
+# graph: text chunks carrying embeddings, extracted entities, similarity
+# edges, and chunk→entity mention edges. Distinct from the Autograph product
+# detector (arango_products.py), which keys off Arango's branded naming.
+GRAPHRAG_TEXT_FIELDS: frozenset[str] = frozenset(
+    {"text", "content", "body", "passage", "chunk", "chunk_text", "page_content", "document"}
+)
+GRAPHRAG_EMBEDDING_FIELDS: frozenset[str] = frozenset(
+    {"embedding", "embeddings", "vector", "vectors", "embedding_vector", "dense_vector"}
+)
+GRAPHRAG_CHUNK_NAME_PATTERNS: tuple[str, ...] = (
+    r"(?i)chunks?$",
+    r"(?i)^text_?units?$",
+    r"(?i)passages?$",
+    r"(?i)embeddings?$",
+)
+GRAPHRAG_ENTITY_NAME_PATTERNS: tuple[str, ...] = (
+    r"(?i)^entit(y|ies)$",
+    r"(?i)_entit(y|ies)$",
+    r"(?i)^nodes?$",
+    r"(?i)^concepts?$",
+)
+GRAPHRAG_SIMILARITY_EDGE_NAME_PATTERNS: tuple[str, ...] = (
+    r"(?i)similar",
+    r"(?i)^knn$",
+    r"(?i)neighbou?rs?$",
+    r"(?i)related",
+)
+GRAPHRAG_SIMILARITY_EDGE_FIELDS: frozenset[str] = frozenset({"score", "similarity", "distance", "cosine", "weight"})
+GRAPHRAG_MENTION_EDGE_NAME_PATTERNS: tuple[str, ...] = (
+    r"(?i)mention",
+    r"(?i)has_?entit",
+    r"(?i)refers?_?to",
+    r"(?i)appears_?in",
+    r"(?i)contains_?entit",
+)
+# Index ``type`` strings that denote a vector / embedding index.
+GRAPHRAG_VECTOR_INDEX_TYPES: frozenset[str] = frozenset({"vector"})
+
 # Snapshot format
 # Bumped when the on-disk shape of snapshot_physical_schema() changes
 # in a way that fingerprint-keyed caches must invalidate.

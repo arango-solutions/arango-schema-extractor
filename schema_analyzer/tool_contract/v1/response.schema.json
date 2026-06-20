@@ -147,7 +147,8 @@
                   "tenantScope": { "$ref": "#/$defs/TenantScope" },
                   "source": { "$ref": "#/$defs/ElementSource" },
                   "tripleCandidate": { "type": "boolean" },
-                  "triple": { "$ref": "#/$defs/Triple" }
+                  "triple": { "$ref": "#/$defs/Triple" },
+                  "graphRagRole": { "type": "string", "enum": ["chunk", "entity", "similarity", "mention"] }
                 }
               }
             },
@@ -198,7 +199,8 @@
                   },
                   "source": { "$ref": "#/$defs/ElementSource" },
                   "tripleCandidate": { "type": "boolean" },
-                  "triple": { "$ref": "#/$defs/Triple" }
+                  "triple": { "$ref": "#/$defs/Triple" },
+                  "graphRagRole": { "type": "string", "enum": ["chunk", "entity", "similarity", "mention"] }
                 }
               }
             }
@@ -292,6 +294,27 @@
                     "isRdfTopology": { "type": "boolean" },
                     "tripleCollections": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
                     "typeEdges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                    "evidence": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              ]
+            },
+            "graphRag": {
+              "description": "GraphRAG template classification (PRD §6.2): whether the schema is a retrieval-augmented-generation graph (text chunks with embeddings + extracted entities + similarity/mention edges + vector indexes). Participating physicalMapping entries are tagged graphRagRole (chunk/entity/similarity/mention). isGraphRag is only true when >=2 signal categories fire. Null when the snapshot has no collections to classify.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "isGraphRag": { "type": "boolean" },
+                    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+                    "chunkCollections": { "type": "array", "items": { "type": "string" } },
+                    "entityCollections": { "type": "array", "items": { "type": "string" } },
+                    "similarityEdges": { "type": "array", "items": { "type": "string" } },
+                    "mentionEdges": { "type": "array", "items": { "type": "string" } },
+                    "vectorIndexes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
                     "evidence": { "type": "array", "items": { "type": "string" } }
                   }
                 }

@@ -20,6 +20,7 @@ import logging
 from typing import Any
 
 from .arango_products import detect_arango_products
+from .graphrag import detect_graphrag
 from .multitenancy import classify_multitenancy
 from .rdf_topology import detect_rdf_topology
 from .reconcile import reconcile_physical_mapping, strip_unknown_collection_names
@@ -172,6 +173,21 @@ def _apply_rdf_topology(
     if block is None:
         return
     _metadata(data)["rdfTopology"] = block
+
+
+def _apply_graphrag(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Detect a GraphRAG topology (chunks/entities/similarity/mention edges)
+    and stamp ``metadata.graphRag`` + per-mapping ``graphRagRole`` annotations.
+
+    Always safe to call; a no-op when the snapshot has no collections.
+    """
+    block = detect_graphrag(data, snapshot)
+    if block is None:
+        return
+    _metadata(data)["graphRag"] = block
 
 
 def _apply_multitenancy(

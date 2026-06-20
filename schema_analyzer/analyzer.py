@@ -28,6 +28,7 @@ from .defaults import (
 from .domain_detect import DomainHint, detect_domain
 from .enrichment import (
     _apply_collection_name_allowlist,
+    _apply_graphrag,
     _apply_multitenancy,
     _apply_rdf_topology,
     _apply_reconciliation,
@@ -310,6 +311,7 @@ class AgenticSchemaAnalyzer:
             _apply_multitenancy(stats_holder, snapshot)
             _apply_vci(stats_holder, snapshot)
             _apply_rdf_topology(stats_holder, snapshot)
+            _apply_graphrag(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             baseline_conceptual = ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json()
             baseline_physical = PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json()
@@ -346,6 +348,7 @@ class AgenticSchemaAnalyzer:
                 multitenancy_status=stats_holder["metadata"].get("multitenancyStatus"),
                 vci=stats_holder["metadata"].get("vci"),
                 rdf_topology=stats_holder["metadata"].get("rdfTopology"),
+                graph_rag=stats_holder["metadata"].get("graphRag"),
                 arango_product=_arango_product_dict_for(snapshot),
                 arango_product_status=_arango_product_status_for(snapshot),
                 quality_metrics=baseline_quality,
@@ -446,6 +449,7 @@ class AgenticSchemaAnalyzer:
         _apply_multitenancy(data, prep.snapshot)
         _apply_vci(data, prep.snapshot)
         _apply_rdf_topology(data, prep.snapshot)
+        _apply_graphrag(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -522,6 +526,7 @@ class AgenticSchemaAnalyzer:
         _apply_multitenancy(data, prep.snapshot)
         _apply_vci(data, prep.snapshot)
         _apply_rdf_topology(data, prep.snapshot)
+        _apply_graphrag(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -620,6 +625,7 @@ class AgenticSchemaAnalyzer:
             rdf_topology=data.get("metadata", {}).get("rdfTopology")
             if isinstance(data.get("metadata"), dict)
             else None,
+            graph_rag=data.get("metadata", {}).get("graphRag") if isinstance(data.get("metadata"), dict) else None,
             quality_metrics=quality_metrics,
             health_score=health_score,
         )

@@ -78,6 +78,11 @@ class AnalysisMetadata(BaseModel):
     # (the TRIPLE mapping style) with supporting evidence. Absent when the
     # snapshot has no collections to classify.
     rdf_topology: dict[str, Any] | None = Field(default=None, alias="rdfTopology")
+    # Populated by the GraphRAG template detector (graphrag.py, PRD §6.2).
+    # Classifies whether the schema is a retrieval-augmented-generation graph
+    # (chunks + entities + similarity/mention edges + vector indexes) with
+    # evidence and a low/medium/high confidence. Absent when no collections.
+    graph_rag: dict[str, Any] | None = Field(default=None, alias="graphRag")
     # Populated by the Arango product detector (arango_products.py).
     # Carries any first-party Arango product artefacts found in the
     # snapshot (today: Autograph corpus + KG projects). Empty

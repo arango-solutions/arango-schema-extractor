@@ -2,7 +2,18 @@
 
 ## Unreleased
 
-(no changes)
+### GraphRAG template detection (PRD §6.2)
+
+- New `schema_analyzer/graphrag.py` — deterministic, snapshot-only recognition
+  of a retrieval-augmented-generation graph: text **chunks** (embedding/vector
+  fields or chunk-like names + text), extracted **entities**, **similarity**
+  edges, chunk→entity **mention** edges, and vector indexes. Brand-agnostic and
+  complementary to the Autograph product detector (`arango_products.py`).
+  Emits `metadata.graphRag` (classification + evidence + low/medium/high
+  confidence) and tags participating physical-mapping entries with
+  `graphRagRole` (`chunk`/`entity`/`similarity`/`mention`). `isGraphRag` is only
+  asserted when ≥2 signal categories fire, to avoid false positives. Documented
+  in both v1 response-schema copies.
 
 ## 0.8.0
 
