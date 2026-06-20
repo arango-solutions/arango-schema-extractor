@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Transpiler export contract (PRD §6.4, adapter integration)
+
+- **SPARQL export now emits `datatypeProperties`.** `export_mapping(target="sparql")`
+  previously emitted only `classes` + `objectProperties`; it now also lists each
+  entity's literal attributes as datatype properties (`iri`, `localName`,
+  `label`, `domain`, `attribute`, `physical`), so a SPARQL→AQL transpiler can
+  resolve literal-valued triple patterns (`?u :email ?e`) to a document-field
+  access on the owning collection — not just entity/relationship patterns. The
+  `SparqlExport` response-schema `$def` documents the new array (both the bundled
+  and published copies, kept byte-identical). Additive and backward compatible.
+- **New `docs/transpiler-integration.md`** — the contract for transpiler authors:
+  how to consume the Cypher resolution index (`resolve`) and the SPARQL
+  vocabulary view (`export`) to generate injection-safe AQL, including variable
+  renaming, the `error`-instead-of-`aql` incomplete-mapping path, and datatype vs
+  object property resolution. Documents that this library produces the *map*;
+  query translation stays in the transpiler (e.g. `arango-cypher`).
+
 ### MCP remote transports + auth (PRD §3.11)
 
 - The MCP server (`schema_analyzer/mcp_server.py`) now serves **sse** and
