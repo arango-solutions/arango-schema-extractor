@@ -68,6 +68,42 @@ def test_analyze_with_mock_provider_parses_json(monkeypatch):
     assert "grounding" in res.metadata.quality_metrics
 
 
+def test_analyze_with_gold_reference_emits_gold_block(monkeypatch):
+    payload = {
+        "conceptualSchema": {
+            "entities": [{"name": "User", "labels": ["User"], "properties": []}],
+            "relationships": [],
+            "properties": [],
+        },
+        "physicalMapping": {
+            "entities": {"User": {"style": "COLLECTION", "collectionName": "users"}},
+            "relationships": {},
+        },
+        "metadata": {
+            "confidence": 0.8,
+            "timestamp": "2026-01-01T00:00:00Z",
+            "analyzedCollectionCounts": {"documentCollections": 1, "edgeCollections": 0},
+            "detectedPatterns": [],
+        },
+    }
+    text = json.dumps(payload)
+
+    import schema_analyzer.analyzer as analyzer_mod
+
+    monkeypatch.setattr(analyzer_mod, "create_provider", lambda name, *, api_key: FakeProvider(text))
+
+    analyzer = AgenticSchemaAnalyzer(
+        llm_provider="openai",
+        api_key="k",
+        model="m",
+        gold_reference={"entities": [{"name": "user"}], "relationships": []},
+    )
+    res = analyzer.analyze_physical_schema(FakeDB(), use_cache=False)
+    gold = res.metadata.quality_metrics["gold"]
+    assert gold["entities"]["f1"] == 1.0
+    assert "gold" in res.metadata.quality_metrics["healthScoreComponents"]
+
+
 # ── tenant-scope wire-through (issue #13) ────────────────────────────────
 
 

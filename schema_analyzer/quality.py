@@ -18,14 +18,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from .utils import singularize
+
 # Composite health-score weights. Components that are not applicable for a
 # given schema (see ``compute_health_score``) are dropped and the remaining
 # weights are renormalized so the score always spans the full 0–100 range.
+# ``gold`` is only present when a reference schema is supplied (PRD §3.12.3
+# "composite … + optional gold overlap").
 HEALTH_WEIGHTS = {
     "confidence": 0.40,
     "connectivity": 0.20,
     "consistency": 0.20,
     "grounding": 0.20,
+    "gold": 0.20,
 }
 
 
@@ -143,10 +148,88 @@ def compute_grounding_metrics(
     }
 
 
+def _gold_norm(s: str) -> str:
+    x = "".join(ch.lower() for ch in s if ch.isalnum() or ch in ("_", "-")).replace("-", "_")
+    return singularize(x)
+
+
+def _name_set(items: Any, key: str) -> set[str]:
+    out: set[str] = set()
+    if isinstance(items, list):
+        for it in items:
+            if isinstance(it, dict) and isinstance(it.get(key), str) and it[key]:
+                out.add(_gold_norm(it[key]))
+    return out
+
+
+def _entity_name_set(conceptual: dict[str, Any], *, include_labels: bool) -> set[str]:
+    out: set[str] = set()
+    for e in conceptual.get("entities", []) or []:
+        if not isinstance(e, dict):
+            continue
+        if isinstance(e.get("name"), str) and e["name"]:
+            out.add(_gold_norm(e["name"]))
+        if include_labels and isinstance(e.get("labels"), list):
+            out.update(_gold_norm(x) for x in e["labels"] if isinstance(x, str) and x)
+    return out
+
+
+def _prf(pred: set[str], truth: set[str]) -> dict[str, float]:
+    """Precision / recall / F1 of ``pred`` against ``truth`` (gold).
+
+    Degenerate cases mirror the eval scorer: empty/empty is perfect; an empty
+    gold set yields recall 1.0 / precision 0.0; an empty prediction yields
+    precision 1.0 / recall 0.0.
+    """
+    if not pred and not truth:
+        return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    if not pred:
+        return {"precision": 1.0, "recall": 0.0, "f1": 0.0}
+    if not truth:
+        return {"precision": 0.0, "recall": 1.0, "f1": 0.0}
+    tp = len(pred & truth)
+    p = tp / len(pred)
+    r = tp / len(truth)
+    f1 = (2 * p * r / (p + r)) if (p + r) else 0.0
+    return {"precision": round(p, 4), "recall": round(r, 4), "f1": round(f1, 4)}
+
+
+def compute_gold_comparison(conceptual: dict[str, Any], reference: dict[str, Any]) -> dict[str, Any]:
+    """Precision/recall/F1 of the conceptual schema vs a supplied gold reference.
+
+    ``reference`` is a domain-pack-style dict ``{"entities": [{"name": ...}],
+    "relationships": [{"type": ..., "from"/"fromEntity": ..., "to"/"toEntity":
+    ...}]}`` — e.g. a curated model or one parsed from a reference OWL/TTL.
+    Names are normalized (lowercased, de-pluralized) before comparison so
+    ``Users`` matches ``user``.
+
+    Returns per-category PRF plus an ``overlap`` scalar (mean of entity F1 and
+    relationship-type F1) suitable for folding into the health score.
+    """
+    pred_entities = _entity_name_set(conceptual, include_labels=True)
+    truth_entities = _name_set(reference.get("entities"), "name")
+
+    pred_rels = _name_set(conceptual.get("relationships"), "type")
+    truth_rels = _name_set(reference.get("relationships"), "type")
+
+    entities = _prf(pred_entities, truth_entities)
+    relationships = _prf(pred_rels, truth_rels)
+    overlap = round((entities["f1"] + relationships["f1"]) / 2.0, 4)
+
+    return {
+        "entities": entities,
+        "relationships": relationships,
+        "overlap": overlap,
+        "referenceEntityCount": len(truth_entities),
+        "referenceRelationshipCount": len(truth_rels),
+    }
+
+
 def compute_health_score(
     structural: dict[str, Any],
     grounding: dict[str, Any],
     confidence: float,
+    gold: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fold the deterministic signals + confidence into a 0–100 health score.
 
@@ -178,6 +261,9 @@ def compute_health_score(
     if grounding.get("mappedCollectionCount", 0) > 0 and isinstance(grounding_ratio, (int, float)):
         components["grounding"] = float(grounding_ratio)
 
+    if gold is not None and isinstance(gold.get("overlap"), (int, float)):
+        components["gold"] = max(0.0, min(1.0, float(gold["overlap"])))
+
     used_weight = sum(HEALTH_WEIGHTS[name] for name in components)
     if used_weight <= 0:
         score = 0
@@ -196,19 +282,25 @@ def build_quality_block(
     physical_mapping: dict[str, Any],
     snapshot: dict[str, Any],
     confidence: float,
+    reference: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """Compute the full quality block and the scalar health score.
 
     Returns ``(quality_metrics, health_score)`` where ``quality_metrics`` is a
-    JSON-safe dict with ``structural``, ``grounding``, and
-    ``healthScoreComponents`` keys, and ``health_score`` is the 0–100 integer.
+    JSON-safe dict with ``structural``, ``grounding``, ``healthScoreComponents``
+    (and, when ``reference`` is supplied, ``gold``) keys, and ``health_score``
+    is the 0–100 integer. When a gold ``reference`` is given, its overlap folds
+    into the health score as an additional weighted component.
     """
     structural = compute_structural_metrics(conceptual)
     grounding = compute_grounding_metrics(conceptual, physical_mapping, snapshot)
-    health = compute_health_score(structural, grounding, confidence)
-    quality_metrics = {
+    gold = compute_gold_comparison(conceptual, reference) if isinstance(reference, dict) and reference else None
+    health = compute_health_score(structural, grounding, confidence, gold=gold)
+    quality_metrics: dict[str, Any] = {
         "structural": structural,
         "grounding": grounding,
         "healthScoreComponents": health["components"],
     }
+    if gold is not None:
+        quality_metrics["gold"] = gold
     return quality_metrics, health["score"]

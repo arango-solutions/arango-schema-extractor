@@ -113,6 +113,15 @@
               "description": "Replace concrete values in sample_field_value_counts with opaque tokens, preserving field names, distinct-value counts, and frequencies."
             }
           }
+        },
+        "goldReference": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Optional gold reference for precision/recall scoring of the conceptual schema (PRD §3.12.3). A domain-pack-style object {entities:[{name}], relationships:[{type}]}. When present, the analyze result's metadata.qualityMetrics gains a 'gold' block and its overlap folds into healthScore.",
+          "properties": {
+            "entities": { "type": "array", "maxItems": 50000, "items": { "type": "object" } },
+            "relationships": { "type": "array", "maxItems": 50000, "items": { "type": "object" } }
+          }
         }
       }
     },

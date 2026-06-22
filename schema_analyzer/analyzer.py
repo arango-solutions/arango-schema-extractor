@@ -213,6 +213,11 @@ class AgenticSchemaAnalyzer:
     prompt_version: str | None = None
     max_repair_attempts: int | None = None
     redaction: RedactionOptions | None = None
+    # Optional gold reference (domain-pack-style dict with entities/relationships)
+    # for precision/recall scoring of the conceptual schema (PRD §3.12.3). When
+    # set, metadata.qualityMetrics gains a ``gold`` block and its overlap folds
+    # into the health score.
+    gold_reference: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.cache, dict) or self.cache is None:
@@ -324,7 +329,7 @@ class AgenticSchemaAnalyzer:
                 used_baseline=True,
             )
             baseline_quality, baseline_health = build_quality_block(
-                baseline_conceptual, baseline_physical, snapshot, BASELINE_NO_LLM_CONFIDENCE
+                baseline_conceptual, baseline_physical, snapshot, BASELINE_NO_LLM_CONFIDENCE, self.gold_reference
             )
             meta = AnalysisMetadata(
                 confidence=BASELINE_NO_LLM_CONFIDENCE,
@@ -581,7 +586,9 @@ class AgenticSchemaAnalyzer:
         physical_mapping = PhysicalMapping.from_json(
             data.get("physicalMapping", {}) if isinstance(data.get("physicalMapping"), dict) else {}
         ).to_json()
-        quality_metrics, health_score = build_quality_block(conceptual_schema, physical_mapping, snapshot, confidence)
+        quality_metrics, health_score = build_quality_block(
+            conceptual_schema, physical_mapping, snapshot, confidence, self.gold_reference
+        )
 
         metadata = AnalysisMetadata(
             confidence=confidence,

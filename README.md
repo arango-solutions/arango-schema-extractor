@@ -161,6 +161,11 @@ Exports (see `schema_analyzer/__init__.py`):
   (with `rdfs:subClassOf`, functional/inverse-functional characteristics,
   observed cardinality, and `owl:inverseOf`)
 - `export_conceptual_model_as_jsonld(analysis)` — OWL conceptual model as JSON-LD
+- `compute_gold_comparison(conceptual, reference)` — precision/recall/F1 of the
+  conceptual schema vs a supplied gold reference (also via
+  `AgenticSchemaAnalyzer(gold_reference=...)` / `analysisOptions.goldReference`)
+- `metric_snapshot` / `append_to_history` / `summarize_history` /
+  `record_metrics` — quality-metric history (trend lines across analysis runs)
 - `register_provider(name, ...)` — register custom LLM providers
 - `list_providers()` — list registered LLM provider names
 - `run_tool(request_dict)` — programmatic entrypoint to the v1 tool contract

@@ -9,8 +9,17 @@ from .diff import diff_analyses
 from .docs import generate_schema_docs
 from .exports import build_cypher_resolution_index, export_mapping
 from .mapping import PhysicalMapping
+from .metric_history import (
+    append_to_history,
+    load_history,
+    metric_snapshot,
+    record_metrics,
+    save_history,
+    summarize_history,
+)
 from .owl_export import export_conceptual_model_as_jsonld, export_conceptual_model_as_owl_turtle
 from .providers import list_providers, register_provider
+from .quality import compute_gold_comparison
 from .snapshot import (
     fingerprint_physical_counts,
     fingerprint_physical_schema,
@@ -31,6 +40,13 @@ __all__ = [
     "build_cypher_resolution_index",
     "export_conceptual_model_as_owl_turtle",
     "export_conceptual_model_as_jsonld",
+    "compute_gold_comparison",
+    "metric_snapshot",
+    "append_to_history",
+    "summarize_history",
+    "load_history",
+    "save_history",
+    "record_metrics",
     "register_provider",
     "list_providers",
     "run_tool",

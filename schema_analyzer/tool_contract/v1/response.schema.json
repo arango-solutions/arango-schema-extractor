@@ -327,6 +327,16 @@
               "properties": {
                 "structural": { "type": "object", "additionalProperties": true },
                 "grounding": { "type": "object", "additionalProperties": true },
+                "gold": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Precision/recall/F1 of the conceptual schema vs a supplied gold reference (PRD §3.12.3). Present only when analysisOptions.goldReference was provided.",
+                  "properties": {
+                    "entities": { "type": "object", "additionalProperties": true },
+                    "relationships": { "type": "object", "additionalProperties": true },
+                    "overlap": { "type": "number" }
+                  }
+                },
                 "healthScoreComponents": { "type": "object", "additionalProperties": { "type": "number" } }
               }
             },

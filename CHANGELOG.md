@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Quality metrics expansion — gold comparison + metric history (PRD §3.12.3)
+
+- **Gold-standard comparison.** New `compute_gold_comparison(conceptual,
+  reference)` in `schema_analyzer/quality.py` scores the conceptual schema's
+  entities and relationship types (precision/recall/F1, name-normalized) against
+  a supplied domain-pack-style reference. When a reference is provided,
+  `build_quality_block` adds a `gold` block to `metadata.qualityMetrics` and
+  folds its overlap into `healthScore` as a weighted component. Wired through a
+  new `AgenticSchemaAnalyzer(gold_reference=...)` constructor arg and the
+  `analysisOptions.goldReference` v1 request option.
+- **Metric history.** New `schema_analyzer/metric_history.py` distills each run
+  into a compact `metric_snapshot` (healthScore, confidence, key structural /
+  grounding ratios, gold overlap, run id / fingerprint / provenance) and
+  maintains an append-only history with `append_to_history`,
+  `summarize_history` (min/max/mean/latest/delta trend lines), and a
+  filesystem-backed store (`load_history` / `save_history` / `record_metrics`).
+  Pure and DB-free; accepts an `AnalysisResult` or a serialized dict
+  (snake_case or camelCase metadata keys).
+
 ### GraphRAG template detection (PRD §6.2)
 
 - New `schema_analyzer/graphrag.py` — deterministic, snapshot-only recognition
