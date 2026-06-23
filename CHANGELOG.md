@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Conceptual Schema Interchange (CSI) v1
+
+- New `schema_analyzer/csi` package defining a **direction-agnostic interchange
+  document** so this library and a forward relational→graph tool (e.g. R2G) can
+  exchange a conceptual model + ArangoDB physical mapping cleanly. A CSI doc is
+  the three blocks `conceptualModel` (≡ `conceptualSchema`),
+  `arangoPhysicalMapping` (≡ `physicalMapping`), and a small `provenance`
+  envelope (`producer`, `direction` reverse/forward, `source`, `confidence`).
+  Detection enrichments ride along as optional additive fields.
+  - `to_csi(analysis, *, direction, source, ...)` produces a CSI doc;
+    `from_csi(csi)` adapts one back into the `{conceptualSchema, physicalMapping,
+    metadata}` shape this library's `diff_analyses` / `compute_gold_comparison` /
+    quality / export consumers accept — so an R2G-produced CSI can be audited
+    here directly.
+  - Standalone JSON Schema shipped in both `docs/csi/v1/csi.schema.json` and the
+    bundled `schema_analyzer/csi/v1/csi.schema.json` (kept byte-identical, with a
+    parity test); `load_csi_schema_v1()` / `validate_csi()` helpers.
+  - New v1 tool operation **`csi`** (`input.analysis` → `result.csi`) exposes it
+    over the JSON contract / MCP, alongside `export` / `owl` / `diff` / `resolve`.
+
 ### Quality metrics expansion — gold comparison + metric history (PRD §3.12.3)
 
 - **Gold-standard comparison.** New `compute_gold_comparison(conceptual,

@@ -5,6 +5,7 @@ from .arango_products import (
     detect_arango_products,
 )
 from .conceptual import ConceptualSchema
+from .csi import CSI_VERSION, from_csi, to_csi
 from .diff import diff_analyses
 from .docs import generate_schema_docs
 from .exports import build_cypher_resolution_index, export_mapping
@@ -35,6 +36,9 @@ __all__ = [
     "ConceptualSchema",
     "PhysicalMapping",
     "diff_analyses",
+    "to_csi",
+    "from_csi",
+    "CSI_VERSION",
     "generate_schema_docs",
     "export_mapping",
     "build_cypher_resolution_index",

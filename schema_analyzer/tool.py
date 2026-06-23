@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from urllib.parse import urlsplit
 
 from .analyzer import AgenticSchemaAnalyzer
+from .csi import to_csi
 from .defaults import (
     ALLOWED_HOSTS_ENV_VAR,
     DEFAULT_CACHE_TTL_SECONDS,
@@ -34,7 +35,7 @@ from .tool_contract_v1 import CONTRACT_VERSION, validate_request_v1, validate_re
 logger = logging.getLogger(__name__)
 
 
-Operation = Literal["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve"]
+Operation = Literal["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve", "csi"]
 
 
 def _library_version() -> str:
@@ -329,6 +330,14 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
                 op=op,
                 req_id=req_id,
                 result={"markdown": md},
+                tooling=_tooling_block(analysis=analysis_in, snapshot=None),
+            )
+
+        if op == "csi":
+            return _build_response(
+                op=op,
+                req_id=req_id,
+                result={"csi": to_csi(analysis_in)},
                 tooling=_tooling_block(analysis=analysis_in, snapshot=None),
             )
 

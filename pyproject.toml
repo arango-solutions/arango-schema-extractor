@@ -110,6 +110,7 @@ packages = ["schema_analyzer"]
 only-include = [
   "schema_analyzer",
   "docs/tool-contract",
+  "docs/csi",
   "README.md",
   "CHANGELOG.md",
   "CONTRIBUTING.md",

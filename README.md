@@ -166,6 +166,9 @@ Exports (see `schema_analyzer/__init__.py`):
   `AgenticSchemaAnalyzer(gold_reference=...)` / `analysisOptions.goldReference`)
 - `metric_snapshot` / `append_to_history` / `summarize_history` /
   `record_metrics` — quality-metric history (trend lines across analysis runs)
+- `to_csi(analysis)` / `from_csi(doc)` — Conceptual Schema Interchange (CSI) v1,
+  a direction-agnostic document (also via the `csi` tool operation) for
+  interop with forward relational→graph tools
 - `register_provider(name, ...)` — register custom LLM providers
 - `list_providers()` — list registered LLM provider names
 - `run_tool(request_dict)` — programmatic entrypoint to the v1 tool contract

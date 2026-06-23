@@ -8,7 +8,7 @@
   "properties": {
     "contractVersion": { "const": "1" },
     "requestId": { "type": "string" },
-    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve"] },
+    "operation": { "type": "string", "enum": ["analyze", "snapshot", "export", "docs", "owl", "diff", "resolve", "csi"] },
     "ok": { "type": "boolean" },
 
     "tooling": {
@@ -39,7 +39,8 @@
         { "$ref": "#/$defs/DocsResult" },
         { "$ref": "#/$defs/OwlResult" },
         { "$ref": "#/$defs/DiffResult" },
-        { "$ref": "#/$defs/ResolveResult" }
+        { "$ref": "#/$defs/ResolveResult" },
+        { "$ref": "#/$defs/CsiResult" }
       ]
     },
 
@@ -782,6 +783,26 @@
             "mappingStyles": { "type": "object", "additionalProperties": true },
             "healthScore": { "type": "object", "additionalProperties": true },
             "summary": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+
+    "CsiResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["csi"],
+      "properties": {
+        "csi": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Conceptual Schema Interchange (CSI) v1 document (direction-agnostic conceptual model + ArangoDB physical mapping + provenance). See docs/csi/v1/csi.schema.json and to_csi().",
+          "required": ["csiVersion", "conceptualModel", "arangoPhysicalMapping", "provenance"],
+          "properties": {
+            "csiVersion": { "const": "1" },
+            "conceptualModel": { "type": "object", "additionalProperties": true },
+            "arangoPhysicalMapping": { "type": "object", "additionalProperties": true },
+            "provenance": { "type": "object", "additionalProperties": true }
           }
         }
       }
