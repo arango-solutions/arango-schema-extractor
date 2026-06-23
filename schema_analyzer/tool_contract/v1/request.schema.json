@@ -77,6 +77,12 @@
         "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 600000, "default": 60000 },
         "sampleLimitPerCollection": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 0 },
         "includeSamplesInSnapshot": { "type": "boolean", "default": false },
+        "graphScope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Restrict snapshot/analysis to one ArangoDB named graph's collections (edge collections + their from/to vertices + orphan collections). Bounds cost / LLM egress / focus. INVALID_ARGUMENT if the named graph does not exist. Omit to analyze the whole database (membership of every named graph is still labeled in metadata.graphMembership)."
+        },
 
         "useCache": { "type": "boolean", "default": true },
         "cache": {

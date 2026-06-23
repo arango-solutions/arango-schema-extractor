@@ -206,10 +206,12 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
         include_snapshot_fingerprint = bool(output_options.get("includeSnapshotFingerprint", True))
 
         if op == "snapshot":
+            snap_graph_scope = analysis_options.get("graphScope")
             snapshot = snapshot_physical_schema(
                 db,
                 sample_limit_per_collection=int(analysis_options.get("sampleLimitPerCollection") or 0),
                 include_samples_in_snapshot=bool(analysis_options.get("includeSamplesInSnapshot") or False),
+                graph_scope=snap_graph_scope if isinstance(snap_graph_scope, str) and snap_graph_scope else None,
             )
             return _build_response(
                 op=op,
@@ -250,11 +252,14 @@ def run_tool(request: dict[str, Any]) -> dict[str, Any]:
 
             include_samples = bool(analysis_options.get("includeSamplesInSnapshot") or False)
             sample_limit = int(analysis_options.get("sampleLimitPerCollection") or 0)
+            raw_graph_scope = analysis_options.get("graphScope")
+            graph_scope = raw_graph_scope if isinstance(raw_graph_scope, str) and raw_graph_scope else None
 
             snapshot = snapshot_physical_schema(
                 db,
                 sample_limit_per_collection=sample_limit,
                 include_samples_in_snapshot=include_samples,
+                graph_scope=graph_scope,
             )
 
             analysis = analyzer.analyze_physical_schema(

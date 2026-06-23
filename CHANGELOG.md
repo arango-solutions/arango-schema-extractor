@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Named-graph membership + scoping
+
+- **Graph membership (default).** New `schema_analyzer/graph_membership.py` labels
+  which named graph(s) each entity/relationship belongs to — derived from the
+  snapshot's graph definitions — and stamps `metadata.graphMembership`
+  (per-graph entity/relationship/collection lists + an `ungraphed` bucket) plus
+  a per-entry `physicalMapping[*].graphs` list. Membership is many-to-many.
+  Snapshot-only; absent (no-op) when the database has no named graphs.
+- **Graph scoping (opt-in).** `snapshot_physical_schema(..., graph_scope=NAME)`
+  / `AgenticSchemaAnalyzer.analyze_physical_schema(..., graph_scope=NAME)` /
+  `analysisOptions.graphScope` restrict analysis to one named graph's
+  collections (edge collections + their from/to vertices + orphans), bounding
+  cost / LLM egress / focus. `INVALID_ARGUMENT` if the named graph is missing.
+- **Bugfix (graph properties parsing).** `_summarize_graph_props` now accepts
+  python-arango's normalized snake_case shape (`edge_definitions` with
+  `edge_collection` / `from_vertex_collections` / `to_vertex_collections`,
+  `orphan_collections`) in addition to the raw HTTP camelCase shape. Previously
+  `graphs_detailed` edge definitions were empty for real databases (masked
+  because endpoint resolution falls back to edge sampling) — this also feeds
+  sharding-profile and the new membership/scoping features correctly.
+
 ### Conceptual Schema Interchange (CSI) v1
 
 - New `schema_analyzer/csi` package defining a **direction-agnostic interchange

@@ -149,7 +149,8 @@
                   "source": { "$ref": "#/$defs/ElementSource" },
                   "tripleCandidate": { "type": "boolean" },
                   "triple": { "$ref": "#/$defs/Triple" },
-                  "graphRagRole": { "type": "string", "enum": ["chunk", "entity", "similarity", "mention"] }
+                  "graphRagRole": { "type": "string", "enum": ["chunk", "entity", "similarity", "mention"] },
+                  "graphs": { "type": "array", "items": { "type": "string" } }
                 }
               }
             },
@@ -201,7 +202,8 @@
                   "source": { "$ref": "#/$defs/ElementSource" },
                   "tripleCandidate": { "type": "boolean" },
                   "triple": { "$ref": "#/$defs/Triple" },
-                  "graphRagRole": { "type": "string", "enum": ["chunk", "entity", "similarity", "mention"] }
+                  "graphRagRole": { "type": "string", "enum": ["chunk", "entity", "similarity", "mention"] },
+                  "graphs": { "type": "array", "items": { "type": "string" } }
                 }
               }
             }
@@ -317,6 +319,22 @@
                     "mentionEdges": { "type": "array", "items": { "type": "string" } },
                     "vectorIndexes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
                     "evidence": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              ]
+            },
+            "graphMembership": {
+              "description": "Named-graph membership: which named graph(s) each entity/relationship belongs to (also tagged per-entry under physicalMapping[*].graphs) plus an 'ungraphed' bucket for collections outside any named graph. Membership is many-to-many. Null when the database has no named graphs.",
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "graphCount": { "type": "integer", "minimum": 0 },
+                    "graphs": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": true } },
+                    "ungraphed": { "type": "object", "additionalProperties": true }
                   }
                 }
               ]

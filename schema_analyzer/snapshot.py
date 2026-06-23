@@ -20,6 +20,7 @@ from .defaults import (
     SAMPLE_VALUE_TOP_K,
     SNAPSHOT_FORMAT_VERSION,
 )
+from .errors import SchemaAnalyzerError
 from .type_detection import (
     _detect_candidate_type_fields,
     _pick_best_type_field,
@@ -27,7 +28,7 @@ from .type_detection import (
     infer_entity_type_from_collection_name,
     infer_relationship_type_from_collection_name,
 )
-from .utils import sha256_hex, stable_dumps
+from .utils import iter_edge_definitions, sha256_hex, stable_dumps
 
 logger = logging.getLogger(__name__)
 
@@ -486,24 +487,56 @@ def _summarize_graph_props(props: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "name" in props:
         out["name"] = props.get("name")
-    if "edgeDefinitions" in props and isinstance(props["edgeDefinitions"], list):
+
+    # Accept both python-arango's normalized snake_case shape
+    # (``edge_definitions`` with ``edge_collection`` / ``from_vertex_collections``
+    # / ``to_vertex_collections``) and the raw HTTP camelCase shape
+    # (``edgeDefinitions`` with ``collection`` / ``from`` / ``to``), normalizing
+    # to the internal ``{collection, from, to}`` records the rest of the
+    # codebase (utils.iter_edge_definitions, sharding_profile, membership) reads.
+    raw_defs = props.get("edge_definitions")
+    if not isinstance(raw_defs, list):
+        raw_defs = props.get("edgeDefinitions")
+    if isinstance(raw_defs, list):
         defs = []
-        for d in props["edgeDefinitions"]:
+        for d in raw_defs:
             if not isinstance(d, dict):
                 continue
+            collection = d.get("collection") or d.get("edge_collection")
+            frm = d.get("from")
+            if not isinstance(frm, list):
+                frm = d.get("from_vertex_collections")
+            to = d.get("to")
+            if not isinstance(to, list):
+                to = d.get("to_vertex_collections")
             defs.append(
                 {
-                    "collection": d.get("collection"),
-                    "from": sorted(list(d.get("from", []) or [])),
-                    "to": sorted(list(d.get("to", []) or [])),
+                    "collection": collection,
+                    "from": sorted(list(frm or [])),
+                    "to": sorted(list(to or [])),
                 }
             )
         out["edge_definitions"] = sorted(defs, key=lambda x: str(x.get("collection") or ""))
-    if "orphanCollections" in props and isinstance(props["orphanCollections"], list):
-        out["orphan_collections"] = sorted(list(props["orphanCollections"]))
-    for key in ("isSmart", "isDisjoint", "smartGraphAttribute", "isSatellite"):
-        if key in props:
-            out[key] = props[key]
+
+    orphans = props.get("orphan_collections")
+    if not isinstance(orphans, list):
+        orphans = props.get("orphanCollections")
+    if isinstance(orphans, list):
+        out["orphan_collections"] = sorted(orphans)
+
+    # Smart/Satellite topology flags — accept snake_case (python-arango) and
+    # camelCase (raw), emit the camelCase keys sharding-profile consumes.
+    flag_aliases = {
+        "isSmart": ("isSmart", "is_smart", "smart"),
+        "isDisjoint": ("isDisjoint", "is_disjoint", "disjoint"),
+        "smartGraphAttribute": ("smartGraphAttribute", "smart_graph_attribute"),
+        "isSatellite": ("isSatellite", "is_satellite", "satellite"),
+    }
+    for out_key, sources in flag_aliases.items():
+        for src in sources:
+            if src in props:
+                out[out_key] = props[src]
+                break
     return out
 
 
@@ -534,11 +567,38 @@ def _collect_database_properties(db: Any) -> dict[str, Any]:
     return out
 
 
+def _graph_scope_collections(db: StandardDatabase, graph_name: str) -> set[str]:
+    """Collections belonging to a named graph: edge-definition collections +
+    their ``from``/``to`` vertices + orphan collections. Raises
+    ``INVALID_ARGUMENT`` when the graph cannot be read (missing / no access)."""
+    try:
+        props = graph_properties(db, graph_name)
+    except Exception as e:
+        raise SchemaAnalyzerError(
+            f"Named graph not found or unreadable: {graph_name}",
+            code="INVALID_ARGUMENT",
+            cause=e,
+        ) from e
+    summary = _summarize_graph_props(props)
+    cols: set[str] = set()
+    for ed in iter_edge_definitions(summary):
+        cols.add(str(ed["collection"]))
+        for side in ("from", "to"):
+            vals = ed.get(side)
+            if isinstance(vals, list):
+                cols.update(v for v in vals if isinstance(v, str))
+    orphans = summary.get("orphan_collections")
+    if isinstance(orphans, list):
+        cols.update(v for v in orphans if isinstance(v, str))
+    return cols
+
+
 def snapshot_physical_schema(
     db: StandardDatabase,
     *,
     sample_limit_per_collection: int = 0,
     include_samples_in_snapshot: bool = False,
+    graph_scope: str | None = None,
 ) -> dict[str, Any]:
     """
     Deterministic physical schema snapshot using python-arango Database.
@@ -546,6 +606,12 @@ def snapshot_physical_schema(
     Always detects type discriminator fields (via AQL COLLECT) and edge endpoint
     collections regardless of sample_limit_per_collection, so the baseline can
     correctly classify PG vs LPG physical model styles.
+
+    When ``graph_scope`` names an existing named graph, analysis is restricted
+    to that graph's collections (edge collections + their from/to vertices +
+    orphan collections); all other user collections are excluded. Useful to
+    bound cost / LLM egress / focus on a single subsystem. Raises
+    ``INVALID_ARGUMENT`` if the named graph does not exist.
     """
     collections_info = db.collections()
     if isinstance(collections_info, dict):
@@ -562,6 +628,10 @@ def snapshot_physical_schema(
                         continue
     else:
         collections = {}
+
+    if graph_scope:
+        scope_cols = _graph_scope_collections(db, graph_scope)
+        collections = {n: c for n, c in collections.items() if n in scope_cols}
     snapshot: dict[str, Any] = {
         "version": SNAPSHOT_FORMAT_VERSION,
         "generated_at": None,

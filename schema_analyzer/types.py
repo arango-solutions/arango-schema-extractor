@@ -83,6 +83,11 @@ class AnalysisMetadata(BaseModel):
     # (chunks + entities + similarity/mention edges + vector indexes) with
     # evidence and a low/medium/high confidence. Absent when no collections.
     graph_rag: dict[str, Any] | None = Field(default=None, alias="graphRag")
+    # Populated by the named-graph membership pass (graph_membership.py).
+    # Labels which named graph(s) each entity/relationship belongs to (also
+    # tagged per-entry under physicalMapping[*].graphs) plus an ``ungraphed``
+    # bucket. Absent when the database has no named graphs.
+    graph_membership: dict[str, Any] | None = Field(default=None, alias="graphMembership")
     # Populated by the Arango product detector (arango_products.py).
     # Carries any first-party Arango product artefacts found in the
     # snapshot (today: Autograph corpus + KG projects). Empty

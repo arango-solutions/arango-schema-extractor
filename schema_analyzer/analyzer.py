@@ -28,6 +28,7 @@ from .defaults import (
 from .domain_detect import DomainHint, detect_domain
 from .enrichment import (
     _apply_collection_name_allowlist,
+    _apply_graph_membership,
     _apply_graphrag,
     _apply_multitenancy,
     _apply_rdf_topology,
@@ -257,6 +258,7 @@ class AgenticSchemaAnalyzer:
         sample_limit_per_collection: int = 0,
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
+        graph_scope: str | None = None,
         _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult | _AnalysisContext:
         """Shared setup for sync and async analysis paths.
@@ -270,6 +272,7 @@ class AgenticSchemaAnalyzer:
             db,
             sample_limit_per_collection=sample_limit_per_collection,
             include_samples_in_snapshot=include_samples_in_snapshot,
+            graph_scope=graph_scope,
         )
         snapshot["generated_at"] = now_iso()
         fingerprint = fingerprint_physical_schema(snapshot, include_samples=False)
@@ -317,6 +320,7 @@ class AgenticSchemaAnalyzer:
             _apply_vci(stats_holder, snapshot)
             _apply_rdf_topology(stats_holder, snapshot)
             _apply_graphrag(stats_holder, snapshot)
+            _apply_graph_membership(stats_holder, snapshot)
             _apply_statistics(db, stats_holder, snapshot)
             baseline_conceptual = ConceptualSchema.from_json(baseline.get("conceptualSchema", {})).to_json()
             baseline_physical = PhysicalMapping.from_json(baseline.get("physicalMapping", {})).to_json()
@@ -354,6 +358,7 @@ class AgenticSchemaAnalyzer:
                 vci=stats_holder["metadata"].get("vci"),
                 rdf_topology=stats_holder["metadata"].get("rdfTopology"),
                 graph_rag=stats_holder["metadata"].get("graphRag"),
+                graph_membership=stats_holder["metadata"].get("graphMembership"),
                 arango_product=_arango_product_dict_for(snapshot),
                 arango_product_status=_arango_product_status_for(snapshot),
                 quality_metrics=baseline_quality,
@@ -404,6 +409,7 @@ class AgenticSchemaAnalyzer:
         sample_limit_per_collection: int = 0,
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
+        graph_scope: str | None = None,
         _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         prov = _ProvenanceStamp(run_id=str(uuid.uuid4()), started_at=now_iso())
@@ -414,6 +420,7 @@ class AgenticSchemaAnalyzer:
             sample_limit_per_collection=sample_limit_per_collection,
             include_samples_in_snapshot=include_samples_in_snapshot,
             use_cache=use_cache,
+            graph_scope=graph_scope,
             _snapshot=_snapshot,
         )
         if isinstance(prep, AnalysisResult):
@@ -455,6 +462,7 @@ class AgenticSchemaAnalyzer:
         _apply_vci(data, prep.snapshot)
         _apply_rdf_topology(data, prep.snapshot)
         _apply_graphrag(data, prep.snapshot)
+        _apply_graph_membership(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -480,6 +488,7 @@ class AgenticSchemaAnalyzer:
         sample_limit_per_collection: int = 0,
         include_samples_in_snapshot: bool = False,
         use_cache: bool = True,
+        graph_scope: str | None = None,
         _snapshot: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         """Async version of analyze_physical_schema. Requires provider with agenerate()."""
@@ -491,6 +500,7 @@ class AgenticSchemaAnalyzer:
             sample_limit_per_collection=sample_limit_per_collection,
             include_samples_in_snapshot=include_samples_in_snapshot,
             use_cache=use_cache,
+            graph_scope=graph_scope,
             _snapshot=_snapshot,
         )
         if isinstance(prep, AnalysisResult):
@@ -532,6 +542,7 @@ class AgenticSchemaAnalyzer:
         _apply_vci(data, prep.snapshot)
         _apply_rdf_topology(data, prep.snapshot)
         _apply_graphrag(data, prep.snapshot)
+        _apply_graph_membership(data, prep.snapshot)
         _apply_tenant_scope(data)
         _apply_statistics(db, data, prep.snapshot)
 
@@ -633,6 +644,9 @@ class AgenticSchemaAnalyzer:
             if isinstance(data.get("metadata"), dict)
             else None,
             graph_rag=data.get("metadata", {}).get("graphRag") if isinstance(data.get("metadata"), dict) else None,
+            graph_membership=data.get("metadata", {}).get("graphMembership")
+            if isinstance(data.get("metadata"), dict)
+            else None,
             quality_metrics=quality_metrics,
             health_score=health_score,
         )

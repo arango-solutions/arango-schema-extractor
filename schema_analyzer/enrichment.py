@@ -20,6 +20,7 @@ import logging
 from typing import Any
 
 from .arango_products import detect_arango_products
+from .graph_membership import compute_graph_membership
 from .graphrag import detect_graphrag
 from .multitenancy import classify_multitenancy
 from .rdf_topology import detect_rdf_topology
@@ -188,6 +189,22 @@ def _apply_graphrag(
     if block is None:
         return
     _metadata(data)["graphRag"] = block
+
+
+def _apply_graph_membership(
+    data: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Annotate physical-mapping entries with named-graph membership and stamp
+    ``metadata.graphMembership``.
+
+    Always safe to call; a no-op when the snapshot has no named graphs
+    (graphless / LPG databases stay byte-identical).
+    """
+    block = compute_graph_membership(data, snapshot)
+    if block is None:
+        return
+    _metadata(data)["graphMembership"] = block
 
 
 def _apply_multitenancy(

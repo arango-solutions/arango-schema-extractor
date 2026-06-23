@@ -5,7 +5,11 @@ Standalone Python library that analyzes an ArangoDB database's physical schema a
 - a **conceptual schema** (entities, relationships, properties)
 - a **conceptual→physical mapping** suitable for transpilers (Cypher, SPARQL, future)
 - **metadata** (confidence, timestamp, analyzed collection counts, detected patterns,
-  per-entity tenant scope, deployment-style sharding profile)
+  per-entity tenant scope, deployment-style sharding profile, named-graph membership)
+
+Analysis covers the whole database by default and labels named-graph membership
+(`metadata.graphMembership` + per-entry `graphs`); pass `graph_scope` /
+`analysisOptions.graphScope` to restrict analysis to a single named graph.
 
 Current release: see [`CHANGELOG.md`](CHANGELOG.md). The version is the single
 source of truth in [`pyproject.toml`](pyproject.toml).
