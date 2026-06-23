@@ -115,6 +115,85 @@ classes) — resolve by `(domain, predicate)`, not predicate alone.
 
 ---
 
+## Named graphs
+
+By default the analyzer covers the **whole database** and labels which ArangoDB
+named graph(s) each element belongs to; you can also **scope** an analysis to a
+single named graph. Both are additive — absent when the database has no named
+graphs, so non-graph schemas are unaffected.
+
+### What you receive
+
+**Per-entry annotation** (on every `physicalMapping` entity/relationship; also
+present in CSI's `arangoPhysicalMapping`):
+
+```jsonc
+"entities":      { "User":    { "style": "COLLECTION", "collectionName": "users", "graphs": ["content","social"] } },
+"relationships": { "FOLLOWS": { "style": "DEDICATED_COLLECTION", "edgeCollectionName": "follows", "graphs": ["social"] } }
+```
+
+- `graphs` is sorted and **multi-valued** (a vertex collection shared across
+  graphs lists all of them) and is **omitted** when the element is in no named
+  graph (an *ungraphed* collection).
+
+**Summary block** `metadata.graphMembership` (present in the `analyze` response;
+**not** in a CSI document, which carries only provenance metadata — reconstruct
+from per-entry `graphs` if you consume CSI):
+
+```jsonc
+{
+  "status": "ok",
+  "graphCount": 2,
+  "graphs": {
+    "social":  { "entities": ["User"], "relationships": ["FOLLOWS"],
+                 "vertexCollections": ["users"], "edgeCollections": ["follows"] },
+    "content": { "entities": ["Post","User"], "relationships": ["WROTE"],
+                 "vertexCollections": ["posts","users"], "edgeCollections": ["wrote"] }
+  },
+  "ungraphed": { "entities": ["Loose"], "relationships": [] }
+}
+```
+
+**Scoping input** `analysisOptions.graphScope: "<graphName>"` (or
+`analyze_physical_schema(graph_scope=...)`): restricts the snapshot/analysis to
+that graph's collections (edge collections + their `from`/`to` vertices +
+orphans). A missing graph yields `{ ok:false, error:{ code:"INVALID_ARGUMENT" }}`.
+
+### How to consume
+
+**Cypher → AQL:**
+
+- When a relationship's mapping has `graphs: ["<name>"]`, you may emit a
+  **named-graph traversal** (`FOR v,e IN OUTBOUND start GRAPH "<name>"`) instead
+  of the edge-collection form. When the relationship is **ungraphed** (no
+  `graphs`), keep the collection-based traversal — `GRAPH "<name>"` is not
+  available for it.
+- A label whose entity is shared across graphs has `graphs: [g1, g2]`;
+  disambiguate by the relationship(s) in the query, or surface the choice — do
+  not assume one.
+
+**SPARQL → AQL:**
+
+- Map SPARQL named graphs to ArangoDB named graphs directly:
+  `GRAPH :social { ?a :FOLLOWS ?b }` → restrict to
+  `graphMembership.graphs["social"]`'s vertex/edge collections (or `GRAPH
+  "social"`). Use the `graphs` keys as the available named-graph IRIs.
+- The **default graph** (no `GRAPH` clause) is your dataset policy; **ungraphed**
+  collections belong only to the default graph (they are in no named graph).
+- Per-class / per-predicate membership comes from the entity/relationship
+  `graphs` lists, complementing the IRIs in the SPARQL vocabulary view above.
+
+Either transpiler can request `graphScope` to obtain a focused, single-graph
+mapping when a query is meant to run within one named graph.
+
+> **Note (≥ this release):** graph definitions are now parsed correctly from
+> live databases (python-arango's normalized `edge_definitions` /
+> `edge_collection` / `*_vertex_collections` shape). Earlier builds left
+> `graphs_detailed` edge definitions empty against real ArangoDB, so any
+> graph-derived signals were unreliable.
+
+---
+
 ## Stability & versioning
 
 - The fields above are a contract: keys are added compatibly, not removed or
