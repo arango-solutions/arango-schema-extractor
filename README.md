@@ -186,6 +186,14 @@ Exports (see `schema_analyzer/__init__.py`):
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Highlights since 0.3.0:
 
+- **0.9.0** — **named-graph awareness**: whole-DB analysis now labels
+  named-graph membership (`metadata.graphMembership` + per-entry `graphs`), with
+  optional single-graph `graphScope`. Plus **GraphRAG template detection**
+  (`metadata.graphRag`), **gold-standard comparison + metric history**
+  (`compute_gold_comparison`, `metric_snapshot`/`record_metrics`), and
+  **Conceptual Schema Interchange (CSI) v1** (`to_csi`/`from_csi` + the `csi`
+  op) for interop with a forward relational→graph tool. Includes a fix so named
+  graph definitions parse correctly against live ArangoDB.
 - **0.8.0** — **confidence calibration from eval feedback**
   (`schema_analyzer/eval/calibration.py`): reliability curve, ECE/MCE/Brier, an
   overconfidence gap, and a `recommended_review_threshold`, surfaced in the

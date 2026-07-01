@@ -5,7 +5,7 @@
 **Package**: `arangodb-schema-analyzer` (PyPI)
 **Import**: `schema_analyzer`
 **Language**: Python ≥ 3.10
-**Version**: tracked in `pyproject.toml` (current: 0.8.0; see `CHANGELOG.md`)
+**Version**: tracked in `pyproject.toml` (current: 0.9.0; see `CHANGELOG.md`)
 
 **Companion codebase:** **Arango-OntoExtract (AOE)** is developed in the **`ontology_generator`** repository (underscore, not `ontology-generator`). A typical local layout is `~/code/ontology_generator` alongside this repo. Cross-references in this document mean that project.
 
@@ -405,9 +405,13 @@ adapter.
 > structural/grounding quality metrics + `healthScore` (§3.12.3); LLM-egress
 > redaction (§4.3). **Shipped in 0.8.0**: MCP SSE / streamable-http remote
 > transport with bearer-token auth (§3.11); confidence calibration from eval
-> feedback (§6.5); SPARQL `datatypeProperties` export (§6.4). Still future:
-> SPARQL/SQL *query generation* (§6.4), GraphRAG template detection (§6.2), and
-> OWL reasoner integration (§6.3).
+> feedback (§6.5); SPARQL `datatypeProperties` export (§6.4). **Shipped in
+> 0.9.0**: GraphRAG template detection (§6.2, `metadata.graphRag`); gold-standard
+> comparison + metric history (§3.12.3); Conceptual Schema Interchange (CSI) v1
+> (`to_csi`/`from_csi` + `csi` op) for interop with a forward relational→graph
+> tool; named-graph membership annotation (`metadata.graphMembership` +
+> per-entry `graphs`) and optional `graphScope` analysis scoping. Still future:
+> SPARQL/SQL *query generation* (§6.4) and OWL reasoner integration (§6.3).
 
 #### **6.1. Additional Mapping Styles**
 - `TRIPLE` — _Shipped in 0.7.0_ as an additive annotation
@@ -422,7 +426,11 @@ adapter.
 
 #### **6.2. Enhanced Pattern Detection**
 - RPT (RDF Topology) detection: `_triples` collections, `rdf:type` edges
-- GraphRAG template matching: text chunks + entities + similarity edges
+- GraphRAG template matching — _Shipped in 0.9.0_ as `metadata.graphRag`
+  (`schema_analyzer/graphrag.py`): brand-agnostic detection of text chunks
+  (embedding/vector fields) + extracted entities + similarity / mention edges +
+  vector indexes, with a low/medium/high confidence and per-entry
+  `graphRagRole`. Complements the Autograph product detector.
 - **Vertex-Centric Index (VCI) detection.** Identify VCI usage on edge
   collections and surface it as a first-class signal on the physical
   mapping (beyond today's per-index `vci=true` flag). Two complementary

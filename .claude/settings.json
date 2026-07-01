@@ -6,7 +6,34 @@
       "Bash(curl -s https://pypi.org/pypi/arangodb-schema-analyzer/json)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('latest on PyPI:', d['info']['version']\\); print\\('0.7.0 files:', [f['filename'] for f in d['releases'].get\\('0.7.0',[]\\)]\\)\")",
       "Bash(awk '/^## 0\\\\.7\\\\.0/{f=1} f&&/^## 0\\\\.6\\\\.1/{exit} f{print}' CHANGELOG.md)",
-      "Bash(gh release *)"
+      "Bash(gh release *)",
+      "Bash(grep -rn *)",
+      "Bash(find . -name \"*.md\" *)",
+      "Bash(curl -s -X GET *)",
+      "Bash(curl -s -X POST *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'FILE=$(python3 -c \"import sys,json; d=json.load(sys.stdin); ti=d.get(\\\"tool_input\\\",d); print(ti.get(\\\"file_path\\\",ti.get(\\\"path\\\",\\\"\\\")))\" 2>/dev/null); if [ -z \"$FILE\" ]; then exit 0; fi; if echo \"$FILE\" | grep -qE \"\\.(ts|js|tsx|jsx|py|go|rs|java|cs|cpp|c|rb|php|swift|kt)$\"; then mkdir -p .prd-drift-queue && touch \".prd-drift-queue/$(date +%s)_$(basename $FILE)\"; echo \"[PRD-DRIFT] Implementation file modified: $(basename $FILE). Run /prd-sync to verify spec alignment.\"; fi'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'DRIFTS=$(ls .prd-drift-queue 2>/dev/null | wc -l | tr -d \" \"); if [ \"$DRIFTS\" -gt 0 ] 2>/dev/null; then echo \"[PRD-DRIFT] $DRIFTS implementation changes queued since last /prd-sync. Run /prd-sync before ending session.\"; fi'"
+          }
+        ]
+      }
     ]
   }
 }

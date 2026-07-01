@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+(no changes)
+
+## 0.9.0
+
 ### Named-graph membership + scoping
 
 - **Graph membership (default).** New `schema_analyzer/graph_membership.py` labels

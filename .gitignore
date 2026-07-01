@@ -41,3 +41,6 @@ coverage.xml
 eval_report*.json
 eval_*.json
 
+.prd-drift-queue/
+.claude/
+CLAUDE.md

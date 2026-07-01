@@ -1,6 +1,6 @@
 [project]
 name = "arangodb-schema-analyzer"
-version = "0.8.0"
+version = "0.9.0"
 description = "Agentic schema analyzer for ArangoDB: conceptual model + conceptual-to-physical mapping for transpilers."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -80,6 +80,12 @@ markers = [
   "integration: requires a running ArangoDB (typically via docker compose)"
 ]
 addopts = "--cov=schema_analyzer --cov-report=term-missing"
+filterwarnings = [
+  # Transitive deprecation from starlette.testclient's use of httpx, surfaced by
+  # the MCP remote-transport test (not our code). Suppressed so release runs are
+  # clean; revisit when starlette/httpx settle the httpx2 migration.
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
 
 [tool.ruff]
 target-version = "py310"
